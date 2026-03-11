@@ -205,7 +205,9 @@ async function summarizeWithAI(env, items, config) {
 async function handleNews(env) {
   try {
     const config = await getConfig(env);
-    const items = await fetchAllNews(config);
+    // 页面展示用更大条数，TG推送保持 maxItems
+    const webConfig = { ...config, maxItems: 50 };
+    const items = await fetchAllNews(webConfig);
     let summary = null;
     if (config.aiSummary !== false) summary = await summarizeWithAI(env, items, config);
     return Response.json({ success: true, items, summary, category: CATEGORIES[config.category] || '综合新闻' });
@@ -445,11 +447,14 @@ function renderNews(data) {
   data.items.forEach(function(item, i) {
     var ago = timeAgo(item.pubDate);
     html += '<a class="news-card" href="' + item.link + '" target="_blank">';
-    html += '<div class="card-meta"><span class="card-source">' + item.flag + ' ' + item.source + '</span>';
+    html += '<div class="card-left">';
+    html += '<span class="card-source">' + item.flag + ' ' + item.source + '</span>';
     if (ago) html += '<span class="card-time">' + ago + '</span>';
     html += '</div>';
+    html += '<div class="card-body">';
     html += '<div class="card-title">' + item.title + '</div>';
     if (item.desc) html += '<div class="card-desc">' + item.desc + '</div>';
+    html += '</div>';
     html += '</a>';
   });
   html += '</div>';
@@ -580,14 +585,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
 .summary-body { font-size: 14px; line-height: 1.8; opacity: .95; }
 
 /* News grid */
-.news-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
-.news-card { background: var(--card-bg); border-radius: var(--radius); padding: 16px; border: 1px solid var(--border); text-decoration: none; color: inherit; display: block; transition: all .15s; box-shadow: var(--shadow); }
-.news-card:hover { box-shadow: var(--shadow-hover); border-color: var(--accent); transform: translateY(-1px); }
-.card-meta { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.card-source { font-size: 11px; font-weight: 600; color: var(--accent); background: var(--accent-light); padding: 2px 8px; border-radius: 20px; }
-.card-time { font-size: 11px; color: var(--text-secondary); }
-.card-title { font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.5; margin-bottom: 6px; }
-.card-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.news-grid { display: flex; flex-direction: column; gap: 8px; }
+.news-card { background: var(--card-bg); border-radius: var(--radius); padding: 14px 18px; border: 1px solid var(--border); text-decoration: none; color: inherit; display: flex; align-items: flex-start; gap: 14px; transition: all .15s; box-shadow: var(--shadow); }
+.news-card:hover { box-shadow: var(--shadow-hover); border-color: var(--accent); transform: translateX(2px); }
+.card-left { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 90px; }
+.card-source { font-size: 11px; font-weight: 600; color: var(--accent); background: var(--accent-light); padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+.card-time { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
+.card-body { flex: 1; min-width: 0; }
+.card-title { font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.5; margin-bottom: 4px; }
+.card-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* Loading */
 .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 80px 20px; gap: 16px; color: var(--text-secondary); }
@@ -610,7 +616,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
   .sidebar { transform: translateX(-100%); }
   .sidebar.open { transform: translateX(0); }
   .main { margin-left: 0; padding: 16px; }
-  .news-grid { grid-template-columns: 1fr; }
+  .card-desc { display: none; }
 }
 `;
 
