@@ -489,7 +489,7 @@ function renderHTML(config) {
     const data=await resp.json();
     showAlert(data.message,data.success?'success':'error');
   }
-  async function testPush(){
+  async function TestPush(){
     showAlert('正在生成 AI 摘要并推送，请稍候（约10-20秒）...','success');
     const resp=await fetch('/api/test',{method:'POST'});
     const data=await resp.json();
