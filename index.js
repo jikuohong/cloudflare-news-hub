@@ -1,5 +1,5 @@
 // ============================================================
-// Cloudflare News Hub - 单文件 Worker (中文媒体 + AI 摘要)
+// Cloudflare News Hub - 中文媒体版 (含港台海外)
 // ============================================================
 
 const DEFAULT_CONFIG = {
@@ -12,7 +12,7 @@ const DEFAULT_CONFIG = {
   pushHour: '8',
   enabled: true,
   aiSummary: true,
-  sources: ['xinhua', 'people', 'cctv', 'chinadaily', 'guancha'],
+  sources: ['rfa', 'voachinese', 'bbc_chinese', 'hk01', 'initium'],
 };
 
 const CATEGORIES = {
@@ -26,59 +26,68 @@ const CATEGORIES = {
   health:        '健康',
 };
 
-const LANGUAGES = {
-  'zh-CN': '简体中文 (中国)',
-  'zh-TW': '繁體中文 (台灣)',
-};
-
 // ============================================================
-// 中文权威媒体新闻源
+// 非大陆中文媒体新闻源
 // ============================================================
 const NEWS_SOURCES = {
-  xinhua: {
-    label: '新华社', flag: '🔴',
-    getUrl: () => 'https://www.xinhuanet.com/rss/world.xml',
+  // 港台媒体
+  hk01: {
+    label: '香港01', flag: '🇭🇰',
+    getUrl: () => 'https://www.hk01.com/rss/世界專題',
   },
-  people: {
-    label: '人民网', flag: '🔴',
-    getUrl: () => 'https://www.people.com.cn/rss/politics.xml',
+  mingpao: {
+    label: '明报', flag: '🇭🇰',
+    getUrl: () => 'https://news.mingpao.com/rss/pns/s00001.xml',
   },
-  cctv: {
-    label: '央视新闻', flag: '📺',
-    getUrl: () => 'https://news.cctv.com/rss/china.xml',
+  scmp_chinese: {
+    label: '南华早报(中)', flag: '🇭🇰',
+    getUrl: () => 'https://www.scmp.com/rss/91/feed',
   },
-  chinadaily: {
-    label: '中国日报', flag: '📰',
-    getUrl: () => 'https://www.chinadaily.com.cn/rss/china_rss.xml',
+  appledaily_tw: {
+    label: '自由时报', flag: '🇹🇼',
+    getUrl: () => 'https://news.ltn.com.tw/rss/all.xml',
   },
-  guancha: {
-    label: '观察者网', flag: '🌐',
-    getUrl: () => 'https://www.guancha.cn/rss.xml',
+  udn: {
+    label: '联合新闻网', flag: '🇹🇼',
+    getUrl: () => 'https://udn.com/rssfeed/news/2/6638?ch=news',
   },
-  huanqiu: {
-    label: '环球时报', flag: '🌏',
-    getUrl: () => 'https://www.huanqiu.com/rss/world.xml',
+  cna: {
+    label: '中央社(台湾)', flag: '🇹🇼',
+    getUrl: () => 'https://www.cna.com.tw/rss/aall.aspx',
   },
-  caixin: {
-    label: '财新网', flag: '💰',
-    getUrl: () => 'https://www.caixin.com/rss/caixinrss.xml',
+  // 海外中文媒体
+  rfa: {
+    label: '自由亚洲电台', flag: '🌏',
+    getUrl: () => 'https://www.rfa.org/mandarin/rss2.xml',
   },
-  thepaper: {
-    label: '澎湃新闻', flag: '💧',
-    getUrl: () => 'https://www.thepaper.cn/rss.xml',
+  voachinese: {
+    label: '美国之音中文', flag: '🇺🇸',
+    getUrl: () => 'https://www.voachinese.com/api/zepqeimovm',
   },
-  yicai: {
-    label: '第一财经', flag: '📈',
-    getUrl: () => 'https://www.yicai.com/rss/',
+  bbc_chinese: {
+    label: 'BBC中文', flag: '🇬🇧',
+    getUrl: () => 'https://feeds.bbci.co.uk/zhongwen/simp/rss.xml',
+  },
+  initium: {
+    label: '端传媒', flag: '🌐',
+    getUrl: () => 'https://theinitium.com/feed',
+  },
+  dwnews: {
+    label: '德国之声中文', flag: '🇩🇪',
+    getUrl: () => 'https://rss.dw.com/rdf/rss-chi-all',
+  },
+  rti: {
+    label: '中央广播电台(台)', flag: '🇹🇼',
+    getUrl: () => 'https://www.rti.org.tw/feeds/news.xml',
   },
   googlezh: {
     label: 'Google新闻(中文)', flag: '🔍',
     getUrl: (config) => {
-      if (config.keywords) return 'https://news.google.com/rss/search?q=' + encodeURIComponent(config.keywords) + '&hl=zh-CN&gl=CN&ceid=CN:zh-Hans';
+      if (config.keywords) return 'https://news.google.com/rss/search?q=' + encodeURIComponent(config.keywords) + '&hl=zh-TW&gl=TW&ceid=TW:zh-Hant';
       const catMap = { world:'WORLD', business:'BUSINESS', technology:'TECHNOLOGY', entertainment:'ENTERTAINMENT', sports:'SPORTS', science:'SCIENCE', health:'HEALTH' };
       const cat = catMap[config.category];
-      if (cat) return 'https://news.google.com/rss/headlines/section/topic/' + cat + '?hl=zh-CN&gl=CN&ceid=CN:zh-Hans';
-      return 'https://news.google.com/rss?hl=zh-CN&gl=CN&ceid=CN:zh-Hans';
+      if (cat) return 'https://news.google.com/rss/headlines/section/topic/' + cat + '?hl=zh-TW&gl=TW&ceid=TW:zh-Hant';
+      return 'https://news.google.com/rss?hl=zh-TW&gl=TW&ceid=TW:zh-Hant';
     },
   },
 };
@@ -142,7 +151,7 @@ function parseRss(xml, sourceName, sourceFlag, config) {
   let match;
   while ((match = itemRegex.exec(xml)) !== null) {
     const block = match[1];
-    const title = decodeHtml(extract(block, 'title'));
+    const title = cleanTitle(decodeHtml(extract(block, 'title')));
     const link  = extract(block, 'link') || extract(block, 'guid');
     if (!title || title.length < 5) continue;
     if (config.keywords) {
@@ -187,8 +196,33 @@ function extract(xml, tag) {
   const m = xml.match(new RegExp('<' + tag + '[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/' + tag + '>|<' + tag + '[^>]*>([\\s\\S]*?)<\\/' + tag + '>'));
   return m ? (m[1] || m[2] || '').trim() : '';
 }
+
 function decodeHtml(str) {
-  return str.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'");
+  return str
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code)));
+}
+
+// 清理标题：去除残留 HTML 标签、多余空白
+function cleanTitle(str) {
+  return str
+    .replace(/<[^>]*>/g, '')   // 去除所有 HTML 标签（包括 CDATA 残留）
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// 转义 Telegram HTML 模式中的特殊字符（仅用于正文文字，非链接）
+function escapeTg(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 // ============================================================
@@ -234,13 +268,13 @@ async function buildAndSend(env, config) {
   const catLabel = CATEGORIES[config.category] || '综合新闻';
   const now = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
 
-  let msg = '📰 <b>Cloudflare News Hub</b>\n';
-  msg += '🗂 ' + catLabel + ' | 🕐 ' + now + '\n';
+  let msg = '📰 <b>中文新闻 Hub</b>\n';
+  msg += '🗂 ' + escapeTg(catLabel) + ' | 🕐 ' + escapeTg(now) + '\n';
 
   if (config.aiSummary !== false) {
     const summary = await summarizeWithAI(env, items, config);
     if (summary) {
-      msg += '\n━━━━━ 🤖 AI 今日摘要 ━━━━━\n\n' + summary + '\n';
+      msg += '\n━━━━━ 🤖 AI 今日摘要 ━━━━━\n\n' + escapeTg(summary) + '\n';
     }
   }
 
@@ -254,9 +288,10 @@ async function buildAndSend(env, config) {
 
   let idx = 1;
   for (const [src, group] of Object.entries(grouped)) {
-    msg += group.flag + ' <b>' + src + '</b>\n';
+    msg += group.flag + ' <b>' + escapeTg(src) + '</b>\n';
     group.items.forEach(item => {
-      msg += idx + '. <a href="' + item.link + '">' + item.title + '</a>\n';
+      // 标题转义，链接不转义
+      msg += idx + '. <a href="' + item.link + '">' + escapeTg(item.title) + '</a>\n';
       idx++;
     });
     msg += '\n';
@@ -340,7 +375,7 @@ function buildClientScript() {
   lines.push("  showAlert(data.message, data.success ? 'success' : 'error');");
   lines.push("};");
   lines.push("window.testPush = async function() {");
-  lines.push("  showAlert('\u6b63\u5728\u62a5\u53d6\u65b0\u95fb\u5e76\u751f\u6210\u6458\u8981\uff0c\u8bf7\u7a0d\u5019\uff0810-20\u79d2\uff09...', 'success');");
+  lines.push("  showAlert('\u6b63\u5728\u6293\u53d6\u5e76\u751f\u6210\u6458\u8981\uff0c\u8bf7\u7a0d\u5019\uff0810-20\u79d2\uff09...', 'success');");
   lines.push("  var resp = await fetch('/api/test', { method: 'POST' });");
   lines.push("  var data = await resp.json();");
   lines.push("  showAlert(data.message, data.success ? 'success' : 'error');");
@@ -370,7 +405,7 @@ function buildClientScript() {
 }
 
 function renderHTML(config) {
-  const langOptions = Object.entries(LANGUAGES).map(function(e) {
+  const langOptions = [['zh-CN','简体中文'],['zh-TW','繁體中文']].map(function(e) {
     return '<option value="' + e[0] + '"' + (config.language === e[0] ? ' selected' : '') + '>' + e[1] + '</option>';
   }).join('');
   const regionOptions = ['CN','TW','HK'].map(function(r) {
@@ -396,7 +431,7 @@ function renderHTML(config) {
   const css = [
     '*{box-sizing:border-box;margin:0;padding:0}',
     'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}',
-    '.header{background:linear-gradient(135deg,#b91c1c,#991b1b);padding:24px 32px;display:flex;align-items:center;gap:16px}',
+    '.header{background:linear-gradient(135deg,#1e40af,#7c3aed);padding:24px 32px;display:flex;align-items:center;gap:16px}',
     '.header h1{font-size:24px;font-weight:700;color:white}',
     '.container{max-width:820px;margin:32px auto;padding:0 16px}',
     '.card{background:#1e293b;border-radius:12px;padding:24px;margin-bottom:20px;border:1px solid #334155}',
@@ -405,18 +440,18 @@ function renderHTML(config) {
     '.form-group{margin-bottom:16px}',
     '.form-group label{display:block;font-size:14px;color:#94a3b8;margin-bottom:6px}',
     'select,input[type=text],input[type=number]{width:100%;padding:10px 14px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:14px;outline:none;transition:border-color .2s}',
-    'select:focus,input:focus{border-color:#ef4444}',
+    'select:focus,input:focus{border-color:#3b82f6}',
     '.src-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-top:4px}',
     '.src-label{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#0f172a;border:1px solid #334155;border-radius:8px;cursor:pointer;transition:border-color .2s;font-size:14px}',
-    '.src-label:hover{border-color:#ef4444}',
-    '.src-label input{width:16px;height:16px;accent-color:#ef4444;flex-shrink:0}',
+    '.src-label:hover{border-color:#3b82f6}',
+    '.src-label input{width:16px;height:16px;accent-color:#3b82f6;flex-shrink:0}',
     '.toggle{display:flex;align-items:center;gap:12px;margin-top:8px}',
     '.toggle input[type=checkbox]{width:40px;height:22px;appearance:none;background:#334155;border-radius:11px;position:relative;cursor:pointer;transition:background .2s}',
-    '.toggle input[type=checkbox]:checked{background:#ef4444}',
+    '.toggle input[type=checkbox]:checked{background:#3b82f6}',
     '.toggle input[type=checkbox]::after{content:"";width:18px;height:18px;background:white;border-radius:50%;position:absolute;top:2px;left:2px;transition:left .2s}',
     '.toggle input[type=checkbox]:checked::after{left:20px}',
     '.btn{padding:10px 20px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:600;transition:all .2s}',
-    '.btn-primary{background:#ef4444;color:white}.btn-primary:hover{background:#dc2626}',
+    '.btn-primary{background:#3b82f6;color:white}.btn-primary:hover{background:#2563eb}',
     '.btn-success{background:#10b981;color:white}.btn-success:hover{background:#059669}',
     '.btn-secondary{background:#334155;color:#e2e8f0}.btn-secondary:hover{background:#475569}',
     '.btn-group{display:flex;gap:12px;flex-wrap:wrap}',
@@ -425,9 +460,9 @@ function renderHTML(config) {
     '.alert-error{background:#450a0a;color:#fca5a5;border:1px solid #ef4444}',
     '.ai-summary{background:#1e1b4b;border:1px solid #4338ca;border-radius:8px;padding:16px;margin-bottom:16px;font-size:14px;line-height:1.8;color:#c7d2fe}',
     '.ai-label{font-size:12px;color:#818cf8;margin-bottom:8px;font-weight:600}',
-    '.preview-item{padding:12px;background:#0f172a;border-radius:8px;margin-bottom:8px;border-left:3px solid #ef4444}',
-    '.preview-item a{color:#fca5a5;text-decoration:none;font-size:14px;line-height:1.5}',
-    '.src-tag{display:inline-block;padding:2px 8px;border-radius:4px;background:#450a0a;color:#fca5a5;font-size:11px;margin-right:6px;margin-bottom:4px}',
+    '.preview-item{padding:12px;background:#0f172a;border-radius:8px;margin-bottom:8px;border-left:3px solid #3b82f6}',
+    '.preview-item a{color:#60a5fa;text-decoration:none;font-size:14px;line-height:1.5}',
+    '.src-tag{display:inline-block;padding:2px 8px;border-radius:4px;background:#1e3a5f;color:#60a5fa;font-size:11px;margin-right:6px;margin-bottom:4px}',
     '@media(max-width:600px){.form-row{grid-template-columns:1fr}}',
   ].join('\n');
 
@@ -445,12 +480,13 @@ function renderHTML(config) {
     '  <span style="font-size:32px">📰</span>',
     '  <div>',
     '    <h1>中文新闻 Hub</h1>',
-    '    <p style="color:#fca5a5;font-size:13px;margin-top:4px">中文权威媒体聚合 · AI 摘要 · Telegram 推送</p>',
+    '    <p style="color:#93c5fd;font-size:13px;margin-top:4px">港台·海外华文媒体聚合 · AI 摘要 · Telegram 推送</p>',
     '  </div>',
     '</div>',
     '<div class="container">',
     '  <div class="card">',
     '    <h2>📡 新闻来源</h2>',
+    '    <p style="font-size:12px;color:#64748b;margin-bottom:12px">🇭🇰 香港：香港01、明报、南华早报(中)　🇹🇼 台湾：自由时报、联合新闻网、中央社、中央广播电台　🌏 海外：自由亚洲电台、美国之音、BBC中文、端传媒、德国之声中文</p>',
     '    <div class="src-grid">' + sourceCheckboxes + '</div>',
     '  </div>',
     '  <div class="card">',
