@@ -683,13 +683,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
 .toast.error { background: #450a0a; color: #fca5a5; }
 .toast.info { background: #1e3a5f; color: #93c5fd; }
 
-/* Clock bar */
-.clock-bar { background: var(--sidebar-bg); border-bottom: 1px solid var(--border); padding: 8px 24px; display: flex; align-items: center; gap: 20px; font-size: 13px; color: var(--text-secondary); margin-left: var(--sidebar-w); }
-.clock-time { font-size: 22px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+/* Topbar clock */
+.topbar-clock { display: flex; align-items: center; gap: 12px; position: absolute; left: 50%; transform: translateX(-50%); }
+.clock-time { font-size: 16px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; letter-spacing: .03em; }
 .clock-date { font-size: 13px; color: var(--text); font-weight: 500; }
-.clock-lunar { font-size: 12px; color: var(--text-secondary); }
 .clock-week { font-size: 13px; color: var(--accent); font-weight: 600; }
-@media (max-width: 900px) { .clock-bar { margin-left: 0; padding: 8px 16px; flex-wrap: wrap; gap: 8px; } .clock-time { font-size: 18px; } }
+.clock-lunar { font-size: 12px; color: var(--text-secondary); }
+.clock-sep { color: var(--border); font-size: 14px; }
+@media (max-width: 900px) { .topbar-clock { display: none; } }
 
 /* Overlay */
 .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.3); z-index: 40; }
@@ -718,6 +719,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
     '<div class="topbar">',
     '  <button class="menu-btn" onclick="toggleSidebar()"><i></i><i></i><i></i></button>',
     '  <div class="topbar-logo"><span>📰</span>中文新闻 Hub</div>',
+    '  <div class="topbar-clock">',
+    '    <span class="clock-time" id="clock-time">--:--:--</span>',
+    '    <span class="clock-sep">|</span>',
+    '    <span class="clock-date" id="clock-date"></span>',
+    '    <span class="clock-week" id="clock-week"></span>',
+    '    <span class="clock-sep">|</span>',
+    '    <span class="clock-lunar" id="clock-lunar"></span>',
+    '  </div>',
     '  <div class="topbar-right">',
     '    <button class="topbar-btn" onclick="loadNews()">🔄 刷新</button>',
     '    <button class="topbar-btn primary" onclick="testPush()">📤 推送 TG</button>',
@@ -727,12 +736,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
     '<div class="overlay" id="overlay"></div>',
 
     '<div class="layout">',
-    '<div class="clock-bar" id="clock-bar">',
-    '  <span class="clock-time" id="clock-time">--:--:--</span>',
-    '  <span class="clock-date" id="clock-date"></span>',
-    '  <span class="clock-week" id="clock-week"></span>',
-    '  <span class="clock-lunar" id="clock-lunar"></span>',
-    '</div>',
 
     // Sidebar
     '<div class="sidebar" id="sidebar">',
