@@ -96,7 +96,7 @@ export default {
     if (url.pathname === '/api/config' && request.method === 'GET')  return handleGetConfig(env);
     if (url.pathname === '/api/test'   && request.method === 'POST') return handleTestPush(env);
     if (url.pathname === '/api/news'   && request.method === 'GET')  return handleNews(env);
-    return new Response(renderHTML(await getConfig(env)), { headers: { 'Content-Type': 'text/html;charset=UTF-8' } });
+    return new Response(renderHTML(await getConfig(env), env), { headers: { 'Content-Type': 'text/html;charset=UTF-8' } });
   },
   async scheduled(event, env, ctx) {
     ctx.waitUntil(runNewsPush(env));
@@ -1028,11 +1028,87 @@ initTheme();
 `;
 }
 
-function renderHTML(config) {
+function renderHTML(config, env) {
   const catOptions = Object.entries(CATEGORIES).map(function(e) {
     return '<option value="' + e[0] + '"' + (config.category === e[0] ? ' selected' : '') + '>' + e[1] + '</option>';
   }).join('');
   // hourOptions removed - using text input now
+
+  // 推送渠道配置状态检测（服务端渲染）
+  const CHANNELS = [
+    {
+      icon: '✈️', name: 'Telegram',
+      vars: [
+        { key: 'TG_TOKEN',   configured: !!(env && env.TG_TOKEN) },
+        { key: 'TG_CHAT_ID', configured: !!(env && env.TG_CHAT_ID) },
+      ],
+    },
+    {
+      icon: '🪶', name: '飞书',
+      vars: [{ key: 'FEISHU_WEBHOOK', configured: !!(env && env.FEISHU_WEBHOOK) }],
+    },
+    {
+      icon: '📎', name: '钉钉',
+      vars: [
+        { key: 'DINGTALK_WEBHOOK', configured: !!(env && env.DINGTALK_WEBHOOK) },
+        { key: 'DINGTALK_SECRET',  configured: !!(env && env.DINGTALK_SECRET), optional: true },
+      ],
+    },
+    {
+      icon: '💼', name: '企业微信',
+      vars: [{ key: 'WECOM_WEBHOOK', configured: !!(env && env.WECOM_WEBHOOK) }],
+    },
+    {
+      icon: '➕', name: 'PushPlus',
+      vars: [{ key: 'PUSHPLUS_TOKEN', configured: !!(env && env.PUSHPLUS_TOKEN) }],
+    },
+    {
+      icon: '🔔', name: 'Bark',
+      vars: [{ key: 'BARK_URL', configured: !!(env && env.BARK_URL) }],
+    },
+    {
+      icon: '💬', name: 'WxPusher',
+      vars: [
+        { key: 'WXPUSHER_APP_TOKEN',  configured: !!(env && env.WXPUSHER_APP_TOKEN) },
+        { key: 'WXPUSHER_UIDS',       configured: !!(env && env.WXPUSHER_UIDS),      optional: true },
+        { key: 'WXPUSHER_TOPIC_IDS',  configured: !!(env && env.WXPUSHER_TOPIC_IDS), optional: true },
+      ],
+    },
+  ];
+
+  // 判断渠道整体是否已配置（必填项全部有值）
+  function isChannelReady(ch) {
+    return ch.vars.filter(v => !v.optional).every(v => v.configured);
+  }
+
+  // 渲染每个渠道条目
+  const channelItems = CHANNELS.map(ch => {
+    const ready = isChannelReady(ch);
+    // 变量标签：已配置绿色✓，未配置显示变量名
+    const varTags = ch.vars.map(v => {
+      if (v.configured) {
+        return '<span class="ch-tag ch-tag-ok">' + v.key + ' ✓</span>';
+      } else if (v.optional) {
+        return '<span class="ch-tag ch-tag-opt">' + v.key + '<span class="ch-opt-label">可选</span></span>';
+      } else {
+        return '<span class="ch-tag ch-tag-missing">' + v.key + '</span>';
+      }
+    }).join('');
+    return (
+      '<div class="push-channel-item' + (ready ? ' ch-ready' : '') + '">' +
+        '<span class="ch-icon">' + ch.icon + '</span>' +
+        '<div class="ch-body">' +
+          '<div class="ch-name-row">' +
+            '<span class="ch-name">' + ch.name + '</span>' +
+            (ready
+              ? '<span class="ch-status ch-status-ok">已配置</span>'
+              : '<span class="ch-status ch-status-off">未配置</span>') +
+          '</div>' +
+          '<div class="ch-vars">' + varTags + '</div>' +
+        '</div>' +
+      '</div>'
+    );
+  }).join('');
 
   const navItems = Object.entries(CATEGORIES).map(function(e) {
     return '<div class="nav-item' + (config.category === e[0] ? ' active' : '') + '" data-cat="' + e[0] + '" onclick="selectCategory(\'' + e[0] + '\')">' +
@@ -1112,11 +1188,28 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
 .toggle input:checked + .toggle-slider { background: var(--accent); }
 .toggle input:checked + .toggle-slider::after { transform: translateX(16px); }
 .src-region-label { font-size: 11px; color: var(--text-secondary); font-weight: 600; padding: 6px 2px 3px; text-transform: uppercase; letter-spacing: .04em; }
-.push-channels { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
-.push-channel-item { display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); }
-.ch-icon { font-size: 15px; flex-shrink: 0; margin-top: 1px; }
+.push-channels { display: flex; flex-direction: column; gap: 5px; margin-bottom: 8px; }
+.push-channel-item { display: flex; align-items: flex-start; gap: 8px; padding: 7px 8px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); transition: border-color .15s; }
+.push-channel-item.ch-ready { border-color: #16a34a55; background: #f0fdf4; }
+[data-theme="dark"] .push-channel-item.ch-ready { background: #052e16; border-color: #16a34a88; }
+.ch-icon { font-size: 15px; flex-shrink: 0; margin-top: 2px; }
+.ch-body { flex: 1; min-width: 0; }
+.ch-name-row { display: flex; align-items: center; gap: 5px; margin-bottom: 4px; }
 .ch-name { font-size: 12px; font-weight: 600; color: var(--text); }
-.ch-var { font-size: 10px; color: var(--text-secondary); margin-top: 1px; font-family: monospace; word-break: break-all; }
+.ch-status { font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 10px; flex-shrink: 0; }
+.ch-status-ok  { background: #dcfce7; color: #15803d; }
+.ch-status-off { background: var(--border); color: var(--text-secondary); }
+[data-theme="dark"] .ch-status-ok  { background: #14532d; color: #4ade80; }
+[data-theme="dark"] .ch-status-off { background: #2d3148; color: #6b7280; }
+.ch-vars { display: flex; flex-wrap: wrap; gap: 3px; }
+.ch-tag { font-size: 10px; font-family: monospace; padding: 1px 5px; border-radius: 4px; display: inline-flex; align-items: center; gap: 3px; }
+.ch-tag-ok      { background: #dcfce7; color: #15803d; }
+.ch-tag-missing { background: #fef2f2; color: #b91c1c; border: 1px dashed #fca5a5; }
+.ch-tag-opt     { background: var(--bg); color: var(--text-secondary); border: 1px solid var(--border); }
+[data-theme="dark"] .ch-tag-ok      { background: #14532d; color: #4ade80; }
+[data-theme="dark"] .ch-tag-missing { background: #450a0a; color: #fca5a5; border-color: #7f1d1d; }
+[data-theme="dark"] .ch-tag-opt     { background: #1e2130; color: #6b7280; }
+.ch-opt-label { font-size: 9px; opacity: .7; }
 .push-hint { font-size: 11px; color: var(--text-secondary); line-height: 1.5; padding: 4px 2px 10px; }
 .src-item { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: 12px; color: var(--text-secondary); transition: all .15s; margin-bottom: 1px; }
 .src-item input { display: none; }
@@ -1265,15 +1358,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
 
     '    <div class="settings-title" style="padding-top:14px">📬 推送渠道</div>',
     '    <div class="push-channels">',
-    '      <div class="push-channel-item"><span class="ch-icon">✈️</span><div><div class="ch-name">Telegram</div><div class="ch-var">TG_TOKEN · TG_CHAT_ID</div></div></div>',
-    '      <div class="push-channel-item"><span class="ch-icon">🪶</span><div><div class="ch-name">飞书</div><div class="ch-var">FEISHU_WEBHOOK</div></div></div>',
-    '      <div class="push-channel-item"><span class="ch-icon">📎</span><div><div class="ch-name">钉钉</div><div class="ch-var">DINGTALK_WEBHOOK · DINGTALK_SECRET(可选)</div></div></div>',
-    '      <div class="push-channel-item"><span class="ch-icon">💼</span><div><div class="ch-name">企业微信</div><div class="ch-var">WECOM_WEBHOOK</div></div></div>',
-    '      <div class="push-channel-item"><span class="ch-icon">➕</span><div><div class="ch-name">PushPlus</div><div class="ch-var">PUSHPLUS_TOKEN</div></div></div>',
-    '      <div class="push-channel-item"><span class="ch-icon">🔔</span><div><div class="ch-name">Bark</div><div class="ch-var">BARK_URL</div></div></div>',
-    '      <div class="push-channel-item"><span class="ch-icon">💬</span><div><div class="ch-name">WxPusher</div><div class="ch-var">WXPUSHER_APP_TOKEN · WXPUSHER_UIDS / WXPUSHER_TOPIC_IDS</div></div></div>',
+    channelItems,
     '    </div>',
-    '    <p class="push-hint">在 Cloudflare Worker → Settings → Variables 中配置对应变量，已配置渠道将自动推送。</p>',
+    '    <p class="push-hint">在 Cloudflare Worker → Settings → Variables 中添加变量后刷新页面即可生效。</p>',
 
     '    <button class="save-btn" onclick="saveConfig()">💾 保存配置</button>',
     '  </div>',
