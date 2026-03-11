@@ -473,6 +473,50 @@ async function pushBark(env, config, payload) {
   return { channel: 'Bark', ok: true };
 }
 
+// ── WxPusher ─────────────────────────────────────────────────
+// 环境变量：
+//   WXPUSHER_APP_TOKEN   应用的 appToken（在 WxPusher 后台创建应用后获得）
+//   WXPUSHER_UIDS        接收消息的用户 UID，多个用英文逗号分隔，例如 UID_xxx,UID_yyy
+//   WXPUSHER_TOPIC_IDS   接收消息的主题 ID，多个用英文逗号分隔（可选，与 UIDS 二选一或同时填）
+async function pushWxPusher(env, config, payload) {
+  const appToken = env.WXPUSHER_APP_TOKEN;
+  if (!appToken) return { channel: 'WxPusher', skipped: true };
+
+  const { md, catLabel } = payload;
+
+  // 解析 UID 列表（允许为空，此时依赖 topicIds）
+  const uids = (env.WXPUSHER_UIDS || '')
+    .split(/[,，\s]+/).map(s => s.trim()).filter(Boolean);
+
+  // 解析 Topic ID 列表
+  const topicIds = (env.WXPUSHER_TOPIC_IDS || '')
+    .split(/[,，\s]+/).map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+
+  if (uids.length === 0 && topicIds.length === 0) {
+    throw new Error('WxPusher：请配置 WXPUSHER_UIDS 或 WXPUSHER_TOPIC_IDS');
+  }
+
+  const body = {
+    appToken,
+    content: md,
+    summary: '📰 中文新闻 Hub - ' + catLabel,  // 消息摘要，显示在微信列表页
+    contentType: 3,   // 3 = Markdown
+    uids: uids.length > 0 ? uids : undefined,
+    topicIds: topicIds.length > 0 ? topicIds : undefined,
+    verifyPayType: 0, // 0 = 不验证，直接发送
+  };
+
+  const resp = await fetch('https://wxpusher.zjiecode.com/api/send/message', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await resp.json();
+  // WxPusher 成功时 code=1000
+  if (data.code !== 1000) throw new Error('WxPusher 推送失败: ' + (data.msg || JSON.stringify(data)));
+  return { channel: 'WxPusher', ok: true };
+}
+
 // ── 统一推送入口 ─────────────────────────────────────────────
 async function runAllPush(env, config) {
   const payload = await buildPlainMessage(env, config);
@@ -484,6 +528,7 @@ async function runAllPush(env, config) {
     pushWecom(env, config, payload),
     pushPushPlus(env, config, payload),
     pushBark(env, config, payload),
+    pushWxPusher(env, config, payload),
   ]);
 
   const summary = results.map((r, i) => {
@@ -1066,6 +1111,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
     '      <div class="push-channel-item"><span class="ch-icon">💼</span><div><div class="ch-name">企业微信</div><div class="ch-var">WECOM_WEBHOOK</div></div></div>',
     '      <div class="push-channel-item"><span class="ch-icon">➕</span><div><div class="ch-name">PushPlus</div><div class="ch-var">PUSHPLUS_TOKEN</div></div></div>',
     '      <div class="push-channel-item"><span class="ch-icon">🔔</span><div><div class="ch-name">Bark</div><div class="ch-var">BARK_URL</div></div></div>',
+    '      <div class="push-channel-item"><span class="ch-icon">💬</span><div><div class="ch-name">WxPusher</div><div class="ch-var">WXPUSHER_APP_TOKEN · WXPUSHER_UIDS / WXPUSHER_TOPIC_IDS</div></div></div>',
     '    </div>',
     '    <p class="push-hint">在 Cloudflare Worker → Settings → Variables 中配置对应变量，已配置渠道将自动推送。</p>',
 
