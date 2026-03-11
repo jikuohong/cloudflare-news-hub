@@ -498,6 +498,57 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 });
+
+// ── 时钟 ──
+function lunarDate(date) {
+  // 农历干支速查（1900-2100简化算法）
+  var lunarMonths = ['正','二','三','四','五','六','七','八','九','十','冬','腊'];
+  var lunarDays = ['初一','初二','初三','初四','初五','初六','初七','初八','初九','初十',
+    '十一','十二','十三','十四','十五','十六','十七','十八','十九','二十',
+    '廿一','廿二','廿三','廿四','廿五','廿六','廿七','廿八','廿九','三十'];
+  var heavenly = ['甲','乙','丙','丁','戊','己','庚','辛','壬','癸'];
+  var earthly  = ['子','丑','寅','卯','辰','巳','午','未','申','酉','戌','亥'];
+  var animals  = ['鼠','牛','虎','兔','龙','蛇','马','羊','猴','鸡','狗','猪'];
+  // 基准：1900年1月31日为农历正月初一（庚子年）
+  var baseDate = new Date(1900, 0, 31);
+  var offset = Math.floor((date - baseDate) / 86400000);
+  // 简化：用平均农历月29.5306天估算
+  var totalDays = offset;
+  var lunarYear = 1900;
+  // 粗算年
+  var approxYear = Math.floor(totalDays / 365.25) + 1900;
+  // 干支
+  var yearOffset = approxYear - 1900;
+  var stem = heavenly[((yearOffset % 10) + 10) % 10];
+  var branch = earthly[((yearOffset % 12) + 12) % 12];
+  var animal = animals[((yearOffset % 12) + 12) % 12];
+  // 粗算月日（用近似值展示，满足日常需求）
+  var dayInYear = totalDays % 354;
+  var month = Math.min(11, Math.floor(dayInYear / 29.5));
+  var day = Math.min(29, Math.floor(dayInYear % 29.5));
+  return stem + branch + '年（' + animal + '年）' + lunarMonths[month] + '月' + lunarDays[day];
+}
+
+function updateClock() {
+  var now = new Date();
+  var h = String(now.getHours()).padStart(2,'0');
+  var m = String(now.getMinutes()).padStart(2,'0');
+  var s = String(now.getSeconds()).padStart(2,'0');
+  var weeks = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
+  var y = now.getFullYear();
+  var mo = String(now.getMonth()+1).padStart(2,'0');
+  var d = String(now.getDate()).padStart(2,'0');
+  var timeEl = document.getElementById('clock-time');
+  var dateEl = document.getElementById('clock-date');
+  var weekEl = document.getElementById('clock-week');
+  var lunarEl = document.getElementById('clock-lunar');
+  if (timeEl) timeEl.textContent = h + ':' + m + ':' + s;
+  if (dateEl) dateEl.textContent = y + '年' + mo + '月' + d + '日';
+  if (weekEl) weekEl.textContent = weeks[now.getDay()];
+  if (lunarEl) lunarEl.textContent = '农历 ' + lunarDate(now);
+}
+updateClock();
+setInterval(updateClock, 1000);
 `;
 }
 
@@ -618,6 +669,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
 .toast.error { background: #450a0a; color: #fca5a5; }
 .toast.info { background: #1e3a5f; color: #93c5fd; }
 
+/* Clock bar */
+.clock-bar { background: var(--sidebar-bg); border-bottom: 1px solid var(--border); padding: 8px 24px; display: flex; align-items: center; gap: 20px; font-size: 13px; color: var(--text-secondary); margin-left: var(--sidebar-w); }
+.clock-time { font-size: 22px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.clock-date { font-size: 13px; color: var(--text); font-weight: 500; }
+.clock-lunar { font-size: 12px; color: var(--text-secondary); }
+.clock-week { font-size: 13px; color: var(--accent); font-weight: 600; }
+@media (max-width: 900px) { .clock-bar { margin-left: 0; padding: 8px 16px; flex-wrap: wrap; gap: 8px; } .clock-time { font-size: 18px; } }
+
 /* Overlay */
 .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.3); z-index: 40; }
 .overlay.show { display: block; }
@@ -654,6 +713,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
     '<div class="overlay" id="overlay"></div>',
 
     '<div class="layout">',
+    '<div class="clock-bar" id="clock-bar">',
+    '  <span class="clock-time" id="clock-time">--:--:--</span>',
+    '  <span class="clock-date" id="clock-date"></span>',
+    '  <span class="clock-week" id="clock-week"></span>',
+    '  <span class="clock-lunar" id="clock-lunar"></span>',
+    '</div>',
 
     // Sidebar
     '<div class="sidebar" id="sidebar">',
