@@ -1016,7 +1016,34 @@ window.selectCategory = selectCategory;
 window.saveConfig = saveConfig;
 window.testPush = testPush;
 
+// ── 折叠块 ──
+var BLOCK_IDS = ['blk-sources', 'blk-settings', 'blk-channels'];
+
+window.toggleBlock = function(id) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  var isOpen = el.classList.toggle('open');
+  // 记住状态到 localStorage
+  try {
+    var state = JSON.parse(localStorage.getItem('collapse_state') || '{}');
+    state[id] = isOpen;
+    localStorage.setItem('collapse_state', JSON.stringify(state));
+  } catch(e) {}
+};
+
+function initCollapseBlocks() {
+  var state = {};
+  try { state = JSON.parse(localStorage.getItem('collapse_state') || '{}'); } catch(e) {}
+  BLOCK_IDS.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    // 默认全部收起，除非 localStorage 里有记录为 true
+    if (state[id] === true) el.classList.add('open');
+  });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
+  initCollapseBlocks();
   loadConfig().then(function(){ loadNews(); });
   document.getElementById('overlay').addEventListener('click', function(){
     if(window.innerWidth <= 900) {
@@ -1293,7 +1320,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
 
 /* Settings panel in sidebar */
 .settings-panel { padding: 8px 12px 16px; border-top: 1px solid var(--border); margin-top: auto; }
-.settings-title { font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .06em; padding: 12px 8px 8px; }
 .form-group { margin-bottom: 10px; }
 .form-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; display: block; padding: 0 2px; }
 .form-control { width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; color: var(--text); background: var(--bg); outline: none; transition: border .15s; }
@@ -1306,6 +1332,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
 .toggle-slider::after { content: ''; position: absolute; width: 16px; height: 16px; background: white; border-radius: 50%; top: 2px; left: 2px; transition: .2s; }
 .toggle input:checked + .toggle-slider { background: var(--accent); }
 .toggle input:checked + .toggle-slider::after { transform: translateX(16px); }
+
+/* Collapse blocks */
+.collapse-block { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; overflow: hidden; }
+.collapse-hd { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; background: var(--bg); border: none; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .05em; transition: background .15s; gap: 6px; }
+.collapse-hd:hover { background: var(--border); color: var(--text); }
+.collapse-arrow { font-size: 12px; transition: transform .2s; flex-shrink: 0; }
+.collapse-block.open > .collapse-hd .collapse-arrow { transform: rotate(180deg); }
+.collapse-bd { display: none; padding: 10px 10px 12px; border-top: 1px solid var(--border); }
+.collapse-block.open > .collapse-bd { display: block; }
 .src-region-label { font-size: 11px; color: var(--text-secondary); font-weight: 600; padding: 6px 2px 3px; text-transform: uppercase; letter-spacing: .04em; }
 .push-channels { display: flex; flex-direction: column; gap: 5px; margin-bottom: 8px; }
 .push-channel-item { display: flex; align-items: flex-start; gap: 8px; padding: 7px 8px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); transition: border-color .15s; }
@@ -1436,52 +1471,68 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
     '  </div>',
 
     '  <div class="settings-panel">',
-    '    <div class="settings-title">⚙️ 设置</div>',
 
-    '    <div class="form-group">',
-    '      <label class="form-label">推送分类 <small style="color:#94a3b8;font-weight:400">（多选，仅影响推送内容）</small></label>',
-    '      <div class="pcat-wrap" id="push-cat-wrap">',
-    pushChips,
+    // ── 折叠块 1：新闻来源 ──
+    '    <div class="collapse-block" id="blk-sources">',
+    '      <button class="collapse-hd" onclick="toggleBlock(\'blk-sources\')">',
+    '        <span>📡 新闻来源</span><span class="collapse-arrow">▾</span>',
+    '      </button>',
+    '      <div class="collapse-bd">',
+    '        <div id="src-grid"></div>',
     '      </div>',
     '    </div>',
 
-    '    <div class="form-group">',
-    '      <label class="form-label">推送条数</label>',
-    '      <input class="form-control" type="number" id="max-input" value="' + config.maxItems + '" min="1" max="50">',
+    // ── 折叠块 2：推送设置 ──
+    '    <div class="collapse-block" id="blk-settings">',
+    '      <button class="collapse-hd" onclick="toggleBlock(\'blk-settings\')">',
+    '        <span>⚙️ 推送设置</span><span class="collapse-arrow">▾</span>',
+    '      </button>',
+    '      <div class="collapse-bd">',
+
+    '        <div class="form-group">',
+    '          <label class="form-label">推送条数</label>',
+    '          <input class="form-control" type="number" id="max-input" value="' + config.maxItems + '" min="1" max="50">',
+    '        </div>',
+
+    '        <div class="form-group">',
+    '          <label class="form-label">包含关键词 <small style="color:#94a3b8;font-weight:400">逗号分隔</small></label>',
+    '          <input class="form-control" type="text" id="kw-input" value="' + config.keywords + '" placeholder="逗号分隔">',
+    '        </div>',
+
+    '        <div class="form-group">',
+    '          <label class="form-label">排除关键词 <small style="color:#94a3b8;font-weight:400">逗号分隔</small></label>',
+    '          <input class="form-control" type="text" id="exkw-input" value="' + config.excludeKeywords + '" placeholder="逗号分隔">',
+    '        </div>',
+
+    '        <div class="form-group">',
+    '          <label class="form-label">推送时间（北京时间，逗号分隔）</label>',
+    '          <input class="form-control" type="text" id="hour-input" placeholder="例如: 8,12,16,20" value="' + (config.pushHours || config.pushHour || '8,12,16,20') + '">',
+    '        </div>',
+
+    '        <div class="toggle-row">',
+    '          <span class="toggle-label">定时推送</span>',
+    '          <label class="toggle"><input type="checkbox" id="enabled-toggle"' + (config.enabled ? ' checked' : '') + '><span class="toggle-slider"></span></label>',
+    '        </div>',
+    '        <div class="toggle-row">',
+    '          <span class="toggle-label">AI 摘要</span>',
+    '          <label class="toggle"><input type="checkbox" id="ai-toggle"' + (config.aiSummary !== false ? ' checked' : '') + '><span class="toggle-slider"></span></label>',
+    '        </div>',
+
+    '      </div>',
     '    </div>',
 
-    '    <div class="form-group">',
-    '      <label class="form-label">包含关键词 <small style="color:#94a3b8;font-weight:400">（仅影响TG推送）</small></label>',
-    '      <input class="form-control" type="text" id="kw-input" value="' + config.keywords + '" placeholder="逗号分隔">',
-    '    </div>',
-
-    '    <div class="form-group">',
-    '      <label class="form-label">排除关键词 <small style="color:#94a3b8;font-weight:400">（仅影响TG推送）</small></label>',
-    '      <input class="form-control" type="text" id="exkw-input" value="' + config.excludeKeywords + '" placeholder="逗号分隔">',
-    '    </div>',
-
-    '    <div class="form-group">',
-    '      <label class="form-label">推送时间（北京时间，多个用逗号分隔）</label>',
-    '      <input class="form-control" type="text" id="hour-input" placeholder="例如: 8,12,16,20" value="' + (config.pushHours || config.pushHour || '8,12,16,20') + '">',
-    '    </div>',
-
-    '    <div class="toggle-row">',
-    '      <span class="toggle-label">定时推送</span>',
-    '      <label class="toggle"><input type="checkbox" id="enabled-toggle"' + (config.enabled ? ' checked' : '') + '><span class="toggle-slider"></span></label>',
-    '    </div>',
-    '    <div class="toggle-row">',
-    '      <span class="toggle-label">AI 摘要</span>',
-    '      <label class="toggle"><input type="checkbox" id="ai-toggle"' + (config.aiSummary !== false ? ' checked' : '') + '><span class="toggle-slider"></span></label>',
-    '    </div>',
-
-    '    <div class="settings-title" style="padding-top:14px">📡 新闻来源</div>',
-    '    <div id="src-grid"></div>',
-
-    '    <div class="settings-title" style="padding-top:14px">📬 推送渠道</div>',
-    '    <div class="push-channels">',
+    // ── 折叠块 3：推送渠道 ──
+    '    <div class="collapse-block" id="blk-channels">',
+    '      <button class="collapse-hd" onclick="toggleBlock(\'blk-channels\')">',
+    '        <span>📬 推送渠道</span><span class="collapse-arrow">▾</span>',
+    '      </button>',
+    '      <div class="collapse-bd">',
+    '        <div class="push-channels">',
     channelItems,
+    '        </div>',
+    '        <p class="push-hint">在 Cloudflare Worker → Settings → Variables 中添加变量后刷新页面即可生效。</p>',
+    '      </div>',
     '    </div>',
-    '    <p class="push-hint">在 Cloudflare Worker → Settings → Variables 中添加变量后刷新页面即可生效。</p>',
 
     '    <button class="save-btn" onclick="saveConfig()">💾 保存配置</button>',
     '  </div>',
