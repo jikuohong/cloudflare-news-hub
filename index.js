@@ -10,7 +10,7 @@ const DEFAULT_CONFIG = {
   pushHour: '8',
   enabled: true,
   aiSummary: true,
-  sources: ['rfa', 'voachinese', 'bbc_chinese', 'hk01', 'initium'],
+  sources: ['rfa', 'voachinese', 'bbc_chinese', 'bbc_trad', 'hk01', 'initium'],
 };
 
 const CATEGORIES = {
@@ -34,7 +34,8 @@ const NEWS_SOURCES = {
   rti:         { label: '中央广播电台', flag: '🇹🇼', region: '台湾' },
   rfa:         { label: '自由亚洲电台', flag: '🌏', region: '海外' },
   voachinese:  { label: '美国之音中文', flag: '🇺🇸', region: '海外' },
-  bbc_chinese: { label: 'BBC中文',      flag: '🇬🇧', region: '海外' },
+  bbc_chinese: { label: 'BBC中文(简)',   flag: '🇬🇧', region: '海外' },
+  bbc_trad:    { label: 'BBC中文(繁)',   flag: '🇬🇧', region: '海外' },
   initium:     { label: '端传媒',       flag: '🌐', region: '海外' },
   dwnews:      { label: '德国之声中文', flag: '🇩🇪', region: '海外' },
   googlezh:    { label: 'Google新闻',   flag: '🔍', region: '聚合' },
@@ -52,6 +53,8 @@ function getSourceUrl(key, config) {
     rfa:          'https://www.rfa.org/mandarin/rss2.xml',
     voachinese:   'https://www.voachinese.com/api/zepqeimovm',
     bbc_chinese:  'https://feeds.bbci.co.uk/zhongwen/simp/rss.xml',
+    bbc_trad:     'https://feeds.bbci.co.uk/zhongwen/trad/rss.xml',
+    bbc_trad:     'https://feeds.bbci.co.uk/zhongwen/trad/rss.xml',
     initium:      'https://theinitium.com/feed',
     dwnews:       'https://rss.dw.com/rdf/rss-chi-all',
     googlezh:     (() => {
@@ -135,8 +138,18 @@ function parseRss(xml, sourceName, sourceFlag, config, maxAgeDays) {
     // 时间过滤：有日期的过滤掉超期内容
     if (pubDate) {
       try {
-        const age = now - new Date(pubDate).getTime();
-        if (age > maxMs || age < 0) continue;
+        // 兼容多种日期格式
+        let ts = new Date(pubDate).getTime();
+        // 如果解析失败尝试修正时区写法 e.g. "+0800" -> "+08:00"
+        if (isNaN(ts)) {
+          const fixed = pubDate.replace(/([\+\-])(\d{2})(\d{2})$/, '$1$2:$3');
+          ts = new Date(fixed).getTime();
+        }
+        if (!isNaN(ts)) {
+          const age = now - ts;
+          if (age > maxMs || age < -3600000) continue; // 允许1小时误差
+        }
+        // 无法解析的日期不过滤
       } catch(e) {}
     }
     if (config.keywords) {
@@ -315,7 +328,8 @@ var SOURCE_LIST = {
   rti:{label:'中央广播电台',flag:'🇹🇼',region:'台湾'},
   rfa:{label:'自由亚洲电台',flag:'🌏',region:'海外'},
   voachinese:{label:'美国之音中文',flag:'🇺🇸',region:'海外'},
-  bbc_chinese:{label:'BBC中文',flag:'🇬🇧',region:'海外'},
+  bbc_chinese:{label:'BBC中文(简)',flag:'🇬🇧',region:'海外'},
+  bbc_trad:{label:'BBC中文(繁)',flag:'🇬🇧',region:'海外'},
   initium:{label:'端传媒',flag:'🌐',region:'海外'},
   dwnews:{label:'德国之声中文',flag:'🇩🇪',region:'海外'},
   googlezh:{label:'Google新闻',flag:'🔍',region:'聚合'},
