@@ -1,14 +1,12 @@
 // ============================================================
-// Cloudflare News Hub - 中文媒体版 (含港台海外)
+// Cloudflare News Hub - 中文媒体版 (侧边栏 + 新闻卡片)
 // ============================================================
 
 const DEFAULT_CONFIG = {
-  language: 'zh-CN',
-  region: 'CN',
   category: 'general',
   keywords: '',
   excludeKeywords: '',
-  maxItems: 10,
+  maxItems: 20,
   pushHour: '8',
   enabled: true,
   aiSummary: true,
@@ -26,71 +24,46 @@ const CATEGORIES = {
   health:        '健康',
 };
 
-// ============================================================
-// 非大陆中文媒体新闻源
-// ============================================================
 const NEWS_SOURCES = {
-  // 港台媒体
-  hk01: {
-    label: '香港01', flag: '🇭🇰',
-    getUrl: () => 'https://www.hk01.com/rss/世界專題',
-  },
-  mingpao: {
-    label: '明报', flag: '🇭🇰',
-    getUrl: () => 'https://news.mingpao.com/rss/pns/s00001.xml',
-  },
-  orientaldaily: {
-    label: '东方日报(港)', flag: '🇭🇰',
-    getUrl: () => 'https://orientaldaily.on.cc/rss/news.xml',
-  },
-  appledaily_tw: {
-    label: '自由时报', flag: '🇹🇼',
-    getUrl: () => 'https://news.ltn.com.tw/rss/all.xml',
-  },
-  udn: {
-    label: '联合新闻网', flag: '🇹🇼',
-    getUrl: () => 'https://udn.com/rssfeed/news/2/6638?ch=news',
-  },
-  cna: {
-    label: '中央社(台湾)', flag: '🇹🇼',
-    getUrl: () => 'https://www.cna.com.tw/rss/aall.aspx',
-  },
-  // 海外中文媒体
-  rfa: {
-    label: '自由亚洲电台', flag: '🌏',
-    getUrl: () => 'https://www.rfa.org/mandarin/rss2.xml',
-  },
-  voachinese: {
-    label: '美国之音中文', flag: '🇺🇸',
-    getUrl: () => 'https://www.voachinese.com/api/zepqeimovm',
-  },
-  bbc_chinese: {
-    label: 'BBC中文', flag: '🇬🇧',
-    getUrl: () => 'https://feeds.bbci.co.uk/zhongwen/simp/rss.xml',
-  },
-  initium: {
-    label: '端传媒', flag: '🌐',
-    getUrl: () => 'https://theinitium.com/feed',
-  },
-  dwnews: {
-    label: '德国之声中文', flag: '🇩🇪',
-    getUrl: () => 'https://rss.dw.com/rdf/rss-chi-all',
-  },
-  rti: {
-    label: '中央广播电台(台)', flag: '🇹🇼',
-    getUrl: () => 'https://www.rti.org.tw/feeds/news.xml',
-  },
-  googlezh: {
-    label: 'Google新闻(中文)', flag: '🔍',
-    getUrl: (config) => {
+  hk01:        { label: '香港01',       flag: '🇭🇰', region: '香港' },
+  mingpao:     { label: '明报',         flag: '🇭🇰', region: '香港' },
+  orientaldaily:{ label: '东方日报',    flag: '🇭🇰', region: '香港' },
+  appledaily_tw:{ label: '自由时报',    flag: '🇹🇼', region: '台湾' },
+  udn:         { label: '联合新闻网',   flag: '🇹🇼', region: '台湾' },
+  cna:         { label: '中央社',       flag: '🇹🇼', region: '台湾' },
+  rti:         { label: '中央广播电台', flag: '🇹🇼', region: '台湾' },
+  rfa:         { label: '自由亚洲电台', flag: '🌏', region: '海外' },
+  voachinese:  { label: '美国之音中文', flag: '🇺🇸', region: '海外' },
+  bbc_chinese: { label: 'BBC中文',      flag: '🇬🇧', region: '海外' },
+  initium:     { label: '端传媒',       flag: '🌐', region: '海外' },
+  dwnews:      { label: '德国之声中文', flag: '🇩🇪', region: '海外' },
+  googlezh:    { label: 'Google新闻',   flag: '🔍', region: '聚合' },
+};
+
+function getSourceUrl(key, config) {
+  const urls = {
+    hk01:         'https://www.hk01.com/rss/世界專題',
+    mingpao:      'https://news.mingpao.com/rss/pns/s00001.xml',
+    orientaldaily:'https://orientaldaily.on.cc/rss/news.xml',
+    appledaily_tw:'https://news.ltn.com.tw/rss/all.xml',
+    udn:          'https://udn.com/rssfeed/news/2/6638?ch=news',
+    cna:          'https://www.cna.com.tw/rss/aall.aspx',
+    rti:          'https://www.rti.org.tw/feeds/news.xml',
+    rfa:          'https://www.rfa.org/mandarin/rss2.xml',
+    voachinese:   'https://www.voachinese.com/api/zepqeimovm',
+    bbc_chinese:  'https://feeds.bbci.co.uk/zhongwen/simp/rss.xml',
+    initium:      'https://theinitium.com/feed',
+    dwnews:       'https://rss.dw.com/rdf/rss-chi-all',
+    googlezh:     (() => {
       if (config.keywords) return 'https://news.google.com/rss/search?q=' + encodeURIComponent(config.keywords) + '&hl=zh-TW&gl=TW&ceid=TW:zh-Hant';
       const catMap = { world:'WORLD', business:'BUSINESS', technology:'TECHNOLOGY', entertainment:'ENTERTAINMENT', sports:'SPORTS', science:'SCIENCE', health:'HEALTH' };
       const cat = catMap[config.category];
       if (cat) return 'https://news.google.com/rss/headlines/section/topic/' + cat + '?hl=zh-TW&gl=TW&ceid=TW:zh-Hant';
       return 'https://news.google.com/rss?hl=zh-TW&gl=TW&ceid=TW:zh-Hant';
-    },
-  },
-};
+    })(),
+  };
+  return urls[key] || null;
+}
 
 // ============================================================
 // 主入口
@@ -101,7 +74,7 @@ export default {
     if (url.pathname === '/api/config' && request.method === 'POST') return handleSaveConfig(request, env);
     if (url.pathname === '/api/config' && request.method === 'GET')  return handleGetConfig(env);
     if (url.pathname === '/api/test'   && request.method === 'POST') return handleTestPush(env);
-    if (url.pathname === '/api/preview'&& request.method === 'GET')  return handlePreview(env);
+    if (url.pathname === '/api/news'   && request.method === 'GET')  return handleNews(env);
     return new Response(renderHTML(await getConfig(env)), { headers: { 'Content-Type': 'text/html;charset=UTF-8' } });
   },
   async scheduled(event, env, ctx) {
@@ -131,17 +104,18 @@ async function handleSaveConfig(request, env) {
 // 新闻获取
 // ============================================================
 async function fetchFromSource(sourceKey, config) {
-  const source = NEWS_SOURCES[sourceKey];
-  if (!source) return [];
+  const src = NEWS_SOURCES[sourceKey];
+  if (!src) return [];
   try {
-    const url = source.getUrl(config);
+    const url = getSourceUrl(sourceKey, config);
+    if (!url) return [];
     const resp = await fetch(url, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NewsBot/1.0)' },
       signal: AbortSignal.timeout(10000),
     });
     if (!resp.ok) return [];
     const xml = await resp.text();
-    return parseRss(xml, source.label, source.flag, config);
+    return parseRss(xml, src.label, src.flag, config);
   } catch { return []; }
 }
 
@@ -151,8 +125,10 @@ function parseRss(xml, sourceName, sourceFlag, config) {
   let match;
   while ((match = itemRegex.exec(xml)) !== null) {
     const block = match[1];
-    const title = cleanTitle(decodeHtml(extract(block, 'title')));
+    const title = cleanText(decodeHtml(extract(block, 'title')));
     const link  = extract(block, 'link') || extract(block, 'guid');
+    const desc  = cleanText(decodeHtml(extract(block, 'description')));
+    const pubDate = extract(block, 'pubDate');
     if (!title || title.length < 5) continue;
     if (config.keywords) {
       const kws = config.keywords.split(/[,，\s]+/).filter(Boolean);
@@ -162,7 +138,7 @@ function parseRss(xml, sourceName, sourceFlag, config) {
       const exkws = config.excludeKeywords.split(/[,，\s]+/).filter(Boolean);
       if (exkws.some(k => title.includes(k))) continue;
     }
-    items.push({ title, link, source: sourceName, flag: sourceFlag });
+    items.push({ title, link, desc: desc.slice(0, 120), source: sourceName, flag: sourceFlag, pubDate });
   }
   return items;
 }
@@ -196,33 +172,14 @@ function extract(xml, tag) {
   const m = xml.match(new RegExp('<' + tag + '[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/' + tag + '>|<' + tag + '[^>]*>([\\s\\S]*?)<\\/' + tag + '>'));
   return m ? (m[1] || m[2] || '').trim() : '';
 }
-
 function decodeHtml(str) {
-  return str
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code)));
+  return str.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&nbsp;/g,' ').replace(/&#(\d+);/g,(_,c)=>String.fromCharCode(parseInt(c)));
 }
-
-// 清理标题：去除残留 HTML 标签、多余空白
-function cleanTitle(str) {
-  return str
-    .replace(/<[^>]*>/g, '')   // 去除所有 HTML 标签（包括 CDATA 残留）
-    .replace(/\s+/g, ' ')
-    .trim();
+function cleanText(str) {
+  return str.replace(/<[^>]*>/g,'').replace(/\s+/g,' ').trim();
 }
-
-// 转义 Telegram HTML 模式中的特殊字符（仅用于正文文字，非链接）
 function escapeTg(str) {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 // ============================================================
@@ -232,17 +189,27 @@ async function summarizeWithAI(env, items, config) {
   if (!env.AI) return null;
   try {
     const catLabel = CATEGORIES[config.category] || '综合';
-    const newsList = items.map((item, i) => (i + 1) + '. ' + item.title).join('\n');
+    const newsList = items.map((item, i) => (i+1) + '. ' + item.title).join('\n');
     const prompt = '你是专业新闻编辑。以下是今日' + catLabel + '新闻标题，请：\n1. 提炼 3-5 个最重要要点，每点 1-2 句，简洁专业\n2. 最后一句给出今日趋势或值得关注的信号\n\n' + newsList + '\n\n直接输出摘要，不要前缀。';
     const response = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 600,
     });
     return response?.choices?.[0]?.message?.content?.trim() || null;
-  } catch (e) {
-    console.error('摘要失败:', e.message);
-    return null;
-  }
+  } catch { return null; }
+}
+
+// ============================================================
+// API: 新闻 + 摘要
+// ============================================================
+async function handleNews(env) {
+  try {
+    const config = await getConfig(env);
+    const items = await fetchAllNews(config);
+    let summary = null;
+    if (config.aiSummary !== false) summary = await summarizeWithAI(env, items, config);
+    return Response.json({ success: true, items, summary, category: CATEGORIES[config.category] || '综合新闻' });
+  } catch (e) { return Response.json({ success: false, message: e.message }, { status: 500 }); }
 }
 
 // ============================================================
@@ -261,50 +228,36 @@ async function sendToTelegram(env, message) {
   return data;
 }
 
-async function buildAndSend(env, config) {
+async function buildTgMessage(env, config) {
   const items = await fetchAllNews(config);
-  if (items.length === 0) throw new Error('没有获取到新闻，请检查网络或新闻源配置');
-
+  if (items.length === 0) throw new Error('没有获取到新闻');
   const catLabel = CATEGORIES[config.category] || '综合新闻';
   const now = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
-
-  let msg = '📰 <b>中文新闻 Hub</b>\n';
-  msg += '🗂 ' + escapeTg(catLabel) + ' | 🕐 ' + escapeTg(now) + '\n';
-
+  let msg = '📰 <b>中文新闻 Hub</b>\n🗂 ' + escapeTg(catLabel) + ' | 🕐 ' + escapeTg(now) + '\n';
   if (config.aiSummary !== false) {
     const summary = await summarizeWithAI(env, items, config);
-    if (summary) {
-      msg += '\n━━━━━ 🤖 AI 今日摘要 ━━━━━\n\n' + escapeTg(summary) + '\n';
-    }
+    if (summary) msg += '\n━━━━━ 🤖 AI 今日摘要 ━━━━━\n\n' + escapeTg(summary) + '\n';
   }
-
   msg += '\n━━━━━ 📎 原文链接 ━━━━━\n\n';
-
   const grouped = {};
   items.forEach(item => {
     if (!grouped[item.source]) grouped[item.source] = { flag: item.flag, items: [] };
     grouped[item.source].items.push(item);
   });
-
   let idx = 1;
   for (const [src, group] of Object.entries(grouped)) {
     msg += group.flag + ' <b>' + escapeTg(src) + '</b>\n';
     group.items.forEach(item => {
-      // 标题转义，链接不转义
       msg += idx + '. <a href="' + item.link + '">' + escapeTg(item.title) + '</a>\n';
       idx++;
     });
     msg += '\n';
   }
   msg += '━━━━━━━━━━━━━━━━━━━━\n共 ' + items.length + ' 条';
-
   await sendToTelegram(env, msg);
   return items.length;
 }
 
-// ============================================================
-// 定时推送
-// ============================================================
 async function runNewsPush(env) {
   const config = await getConfig(env);
   if (!config.enabled) return;
@@ -314,157 +267,352 @@ async function runNewsPush(env) {
   const lastRun = await env.NEWS_CONFIG.get('lastRun');
   const today = now.toISOString().slice(0, 10);
   if (lastRun === today) return;
-  await buildAndSend(env, config);
+  await buildTgMessage(env, config);
   await env.NEWS_CONFIG.put('lastRun', today);
 }
 
 async function handleTestPush(env) {
   try {
     const config = await getConfig(env);
-    const count = await buildAndSend(env, config);
+    const count = await buildTgMessage(env, config);
     return Response.json({ success: true, message: '推送成功！共发送 ' + count + ' 条新闻' });
   } catch (e) { return Response.json({ success: false, message: e.message }, { status: 500 }); }
 }
 
-async function handlePreview(env) {
-  try {
-    const config = await getConfig(env);
-    const items = await fetchAllNews(config);
-    let summary = null;
-    if (config.aiSummary !== false) summary = await summarizeWithAI(env, items, config);
-    return Response.json({ success: true, items, summary });
-  } catch (e) { return Response.json({ success: false, message: e.message }, { status: 500 }); }
+// ============================================================
+// 前端 HTML
+// ============================================================
+function buildScript() {
+  return `
+var currentCategory = 'general';
+var sidebarOpen = window.innerWidth > 900;
+
+var CATEGORIES = {
+  general:'综合新闻', world:'国际', business:'财经',
+  technology:'科技', entertainment:'娱乐', sports:'体育',
+  science:'科学', health:'健康'
+};
+
+var SOURCE_LIST = {
+  hk01:{label:'香港01',flag:'🇭🇰',region:'香港'},
+  mingpao:{label:'明报',flag:'🇭🇰',region:'香港'},
+  orientaldaily:{label:'东方日报',flag:'🇭🇰',region:'香港'},
+  appledaily_tw:{label:'自由时报',flag:'🇹🇼',region:'台湾'},
+  udn:{label:'联合新闻网',flag:'🇹🇼',region:'台湾'},
+  cna:{label:'中央社',flag:'🇹🇼',region:'台湾'},
+  rti:{label:'中央广播电台',flag:'🇹🇼',region:'台湾'},
+  rfa:{label:'自由亚洲电台',flag:'🌏',region:'海外'},
+  voachinese:{label:'美国之音中文',flag:'🇺🇸',region:'海外'},
+  bbc_chinese:{label:'BBC中文',flag:'🇬🇧',region:'海外'},
+  initium:{label:'端传媒',flag:'🌐',region:'海外'},
+  dwnews:{label:'德国之声中文',flag:'🇩🇪',region:'海外'},
+  googlezh:{label:'Google新闻',flag:'🔍',region:'聚合'},
+};
+
+var config = {};
+
+async function loadConfig() {
+  var r = await fetch('/api/config');
+  config = await r.json();
+  applyConfigToUI();
 }
 
-// ============================================================
-// 前端 UI
-// ============================================================
-function buildClientScript() {
-  var lines = [];
-  lines.push("document.getElementById('enabled').addEventListener('change', function() {");
-  lines.push("  document.getElementById('enabledLabel').textContent = this.checked ? '\u5df2\u542f\u7528' : '\u5df2\u505c\u7528';");
-  lines.push("});");
-  lines.push("document.getElementById('aiSummary').addEventListener('change', function() {");
-  lines.push("  document.getElementById('aiSummaryLabel').textContent = this.checked ? '\u5df2\u542f\u7528' : '\u5df2\u505c\u7528';");
-  lines.push("});");
-  lines.push("function showAlert(msg, type) {");
-  lines.push("  var el = document.getElementById('alert');");
-  lines.push("  el.className = 'alert alert-' + type;");
-  lines.push("  el.textContent = msg;");
-  lines.push("  el.style.display = 'block';");
-  lines.push("  setTimeout(function(){ el.style.display = 'none'; }, 8000);");
-  lines.push("}");
-  lines.push("function getSelectedSources() {");
-  lines.push("  return Array.from(document.querySelectorAll('input[name=sources]:checked')).map(function(el){ return el.value; });");
-  lines.push("}");
-  lines.push("window.saveConfig = async function() {");
-  lines.push("  var config = {");
-  lines.push("    language: document.getElementById('language').value,");
-  lines.push("    region: document.getElementById('region').value,");
-  lines.push("    category: document.getElementById('category').value,");
-  lines.push("    keywords: document.getElementById('keywords').value,");
-  lines.push("    excludeKeywords: document.getElementById('excludeKeywords').value,");
-  lines.push("    maxItems: parseInt(document.getElementById('maxItems').value),");
-  lines.push("    pushHour: document.getElementById('pushHour').value,");
-  lines.push("    enabled: document.getElementById('enabled').checked,");
-  lines.push("    aiSummary: document.getElementById('aiSummary').checked,");
-  lines.push("    sources: getSelectedSources(),");
-  lines.push("  };");
-  lines.push("  var resp = await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });");
-  lines.push("  var data = await resp.json();");
-  lines.push("  showAlert(data.message, data.success ? 'success' : 'error');");
-  lines.push("};");
-  lines.push("window.testPush = async function() {");
-  lines.push("  showAlert('\u6b63\u5728\u6293\u53d6\u5e76\u751f\u6210\u6458\u8981\uff0c\u8bf7\u7a0d\u5019\uff0810-20\u79d2\uff09...', 'success');");
-  lines.push("  var resp = await fetch('/api/test', { method: 'POST' });");
-  lines.push("  var data = await resp.json();");
-  lines.push("  showAlert(data.message, data.success ? 'success' : 'error');");
-  lines.push("};");
-  lines.push("window.previewNews = async function() {");
-  lines.push("  var card = document.getElementById('previewCard');");
-  lines.push("  var list = document.getElementById('previewList');");
-  lines.push("  card.style.display = 'block';");
-  lines.push("  list.innerHTML = '<p style=\"color:#94a3b8\">\u6b63\u5728\u6293\u53d6\u65b0\u95fb\uff0c\u8bf7\u7a0d\u5019...</p>';");
-  lines.push("  var resp = await fetch('/api/preview');");
-  lines.push("  var data = await resp.json();");
-  lines.push("  if (!data.success) { list.innerHTML = '<p style=\"color:#f87171\">' + data.message + '</p>'; return; }");
-  lines.push("  if (!data.items || data.items.length === 0) { list.innerHTML = '<p style=\"color:#94a3b8\">\u6ca1\u6709\u83b7\u53d6\u5230\u65b0\u95fb</p>'; return; }");
-  lines.push("  var html = '';");
-  lines.push("  if (data.summary) {");
-  lines.push("    html += '<div class=\"ai-summary\"><div class=\"ai-label\">AI \u4eca\u65e5\u6458\u8981</div>' + data.summary.split('\\n').join('<br>') + '</div>';");
-  lines.push("  }");
-  lines.push("  html += data.items.map(function(item, i) {");
-  lines.push("    return '<div class=\"preview-item\">' +");
-  lines.push("      '<span class=\"src-tag\">' + item.flag + ' ' + item.source + '</span>' +");
-  lines.push("      '<a href=\"' + item.link + '\" target=\"_blank\">' + (i + 1) + '. ' + item.title + '</a>' +");
-  lines.push("      '</div>';");
-  lines.push("  }).join('');");
-  lines.push("  list.innerHTML = html;");
-  lines.push("};");
-  return lines.join('\n');
+function applyConfigToUI() {
+  document.getElementById('cat-select').value = config.category || 'general';
+  document.getElementById('kw-input').value = config.keywords || '';
+  document.getElementById('exkw-input').value = config.excludeKeywords || '';
+  document.getElementById('max-input').value = config.maxItems || 20;
+  document.getElementById('hour-select').value = config.pushHour || '8';
+  document.getElementById('enabled-toggle').checked = config.enabled !== false;
+  document.getElementById('ai-toggle').checked = config.aiSummary !== false;
+  currentCategory = config.category || 'general';
+  renderSourceGrid(config.sources || []);
+  updateNavActive();
+}
+
+function renderSourceGrid(selected) {
+  var regions = {};
+  Object.entries(SOURCE_LIST).forEach(function(e) {
+    var k = e[0], v = e[1];
+    if (!regions[v.region]) regions[v.region] = [];
+    regions[v.region].push({key:k, ...v});
+  });
+  var html = '';
+  Object.entries(regions).forEach(function(e) {
+    html += '<div class="src-region-label">' + e[0] + '</div>';
+    e[1].forEach(function(src) {
+      var checked = selected.includes(src.key) ? 'checked' : '';
+      html += '<label class="src-item ' + (checked?'active':'') + '">';
+      html += '<input type="checkbox" value="' + src.key + '" ' + checked + ' onchange="toggleSrc(this)">';
+      html += '<span>' + src.flag + ' ' + src.label + '</span></label>';
+    });
+  });
+  document.getElementById('src-grid').innerHTML = html;
+}
+
+function toggleSrc(el) {
+  el.parentElement.classList.toggle('active', el.checked);
+}
+
+function updateNavActive() {
+  document.querySelectorAll('.nav-item').forEach(function(el) {
+    el.classList.toggle('active', el.dataset.cat === currentCategory);
+  });
+}
+
+function selectCategory(cat) {
+  currentCategory = cat;
+  config.category = cat;
+  updateNavActive();
+  loadNews();
+}
+
+async function saveConfig() {
+  var sources = Array.from(document.querySelectorAll('#src-grid input:checked')).map(function(el){return el.value;});
+  var newConf = {
+    category: document.getElementById('cat-select').value,
+    keywords: document.getElementById('kw-input').value,
+    excludeKeywords: document.getElementById('exkw-input').value,
+    maxItems: parseInt(document.getElementById('max-input').value) || 20,
+    pushHour: document.getElementById('hour-select').value,
+    enabled: document.getElementById('enabled-toggle').checked,
+    aiSummary: document.getElementById('ai-toggle').checked,
+    sources: sources,
+  };
+  config = newConf;
+  currentCategory = newConf.category;
+  updateNavActive();
+  var r = await fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(newConf)});
+  var d = await r.json();
+  showToast(d.message, d.success ? 'success' : 'error');
+  loadNews();
+}
+
+async function testPush() {
+  showToast('正在推送，请稍候...', 'info');
+  var r = await fetch('/api/test', {method:'POST'});
+  var d = await r.json();
+  showToast(d.message, d.success ? 'success' : 'error');
+}
+
+async function loadNews() {
+  var area = document.getElementById('news-area');
+  area.innerHTML = '<div class="loading"><div class="spinner"></div><p>正在抓取新闻...</p></div>';
+  try {
+    var r = await fetch('/api/news');
+    var d = await r.json();
+    if (!d.success) { area.innerHTML = '<div class="error-msg">获取失败：' + d.message + '</div>'; return; }
+    renderNews(d);
+  } catch(e) {
+    area.innerHTML = '<div class="error-msg">网络错误，请刷新重试</div>';
+  }
+}
+
+function timeAgo(dateStr) {
+  if (!dateStr) return '';
+  try {
+    var diff = Date.now() - new Date(dateStr).getTime();
+    var m = Math.floor(diff/60000);
+    if (m < 1) return '刚刚';
+    if (m < 60) return m + '分钟前';
+    var h = Math.floor(m/60);
+    if (h < 24) return h + '小时前';
+    return Math.floor(h/24) + '天前';
+  } catch(e) { return ''; }
+}
+
+function renderNews(data) {
+  var area = document.getElementById('news-area');
+  var catTitle = data.category || '综合新闻';
+  var html = '';
+
+  // 页面标题栏
+  html += '<div class="news-header">';
+  html += '<h1 class="news-title">📰 ' + catTitle + '</h1>';
+  html += '<span class="news-count">' + data.items.length + ' 条新闻</span>';
+  html += '</div>';
+
+  // AI 摘要卡片
+  if (data.summary) {
+    html += '<div class="summary-card">';
+    html += '<div class="summary-header"><span class="ai-badge">🤖 AI 摘要</span></div>';
+    html += '<div class="summary-body">' + data.summary.replace(/\\n/g,'<br>') + '</div>';
+    html += '</div>';
+  }
+
+  // 新闻卡片网格
+  html += '<div class="news-grid">';
+  data.items.forEach(function(item, i) {
+    var ago = timeAgo(item.pubDate);
+    html += '<a class="news-card" href="' + item.link + '" target="_blank">';
+    html += '<div class="card-meta"><span class="card-source">' + item.flag + ' ' + item.source + '</span>';
+    if (ago) html += '<span class="card-time">' + ago + '</span>';
+    html += '</div>';
+    html += '<div class="card-title">' + item.title + '</div>';
+    if (item.desc) html += '<div class="card-desc">' + item.desc + '</div>';
+    html += '</a>';
+  });
+  html += '</div>';
+
+  area.innerHTML = html;
+}
+
+function showToast(msg, type) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + (type||'info');
+  setTimeout(function(){ t.className = 'toast'; }, 4000);
+}
+
+window.toggleSidebar = function() {
+  sidebarOpen = !sidebarOpen;
+  document.getElementById('sidebar').classList.toggle('open', sidebarOpen);
+  document.getElementById('overlay').classList.toggle('show', sidebarOpen && window.innerWidth <= 900);
+};
+window.selectCategory = selectCategory;
+window.saveConfig = saveConfig;
+window.testPush = testPush;
+
+document.addEventListener('DOMContentLoaded', function() {
+  loadConfig().then(function(){ loadNews(); });
+  document.getElementById('overlay').addEventListener('click', function(){
+    if(window.innerWidth <= 900) {
+      sidebarOpen = false;
+      document.getElementById('sidebar').classList.remove('open');
+      document.getElementById('overlay').classList.remove('show');
+    }
+  });
+});
+`;
 }
 
 function renderHTML(config) {
-  const langOptions = [['zh-CN','简体中文'],['zh-TW','繁體中文']].map(function(e) {
-    return '<option value="' + e[0] + '"' + (config.language === e[0] ? ' selected' : '') + '>' + e[1] + '</option>';
-  }).join('');
-  const regionOptions = ['CN','TW','HK'].map(function(r) {
-    return '<option value="' + r + '"' + (config.region === r ? ' selected' : '') + '>' + r + '</option>';
-  }).join('');
   const catOptions = Object.entries(CATEGORIES).map(function(e) {
     return '<option value="' + e[0] + '"' + (config.category === e[0] ? ' selected' : '') + '>' + e[1] + '</option>';
   }).join('');
   const hourOptions = Array.from({length:24}, function(_, i) {
     return '<option value="' + i + '"' + (String(config.pushHour) === String(i) ? ' selected' : '') + '>' + String(i).padStart(2,'0') + ':00</option>';
   }).join('');
-  const sourcesChecked = config.sources || DEFAULT_CONFIG.sources;
-  const sourceCheckboxes = Object.entries(NEWS_SOURCES).map(function(e) {
-    const key = e[0], src = e[1];
-    return '<label class="src-label"><input type="checkbox" name="sources" value="' + key + '"' + (sourcesChecked.includes(key) ? ' checked' : '') + '><span>' + src.flag + ' ' + src.label + '</span></label>';
+
+  const navItems = Object.entries(CATEGORIES).map(function(e) {
+    return '<div class="nav-item' + (config.category === e[0] ? ' active' : '') + '" data-cat="' + e[0] + '" onclick="selectCategory(\'' + e[0] + '\')">' +
+      '<span class="nav-icon">' + {'general':'📰','world':'🌍','business':'💹','technology':'💻','entertainment':'🎬','sports':'⚽','science':'🔬','health':'❤️'}[e[0]] + '</span>' +
+      '<span class="nav-label">' + e[1] + '</span></div>';
   }).join('');
 
-  const enabledChecked = config.enabled ? ' checked' : '';
-  const enabledLabel = config.enabled ? '已启用' : '已停用';
-  const aiChecked = config.aiSummary !== false ? ' checked' : '';
-  const aiLabel = config.aiSummary !== false ? '已启用' : '已停用';
+  const css = `
+:root {
+  --bg: #f0f2f5;
+  --sidebar-bg: #ffffff;
+  --card-bg: #ffffff;
+  --border: #e8eaed;
+  --text: #1a1a2e;
+  --text-secondary: #6b7280;
+  --accent: #2563eb;
+  --accent-light: #eff6ff;
+  --summary-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --radius: 12px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-hover: 0 4px 12px rgba(0,0,0,0.12);
+  --sidebar-w: 240px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
 
-  const css = [
-    '*{box-sizing:border-box;margin:0;padding:0}',
-    'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}',
-    '.header{background:linear-gradient(135deg,#1e40af,#7c3aed);padding:24px 32px;display:flex;align-items:center;gap:16px}',
-    '.header h1{font-size:24px;font-weight:700;color:white}',
-    '.container{max-width:820px;margin:32px auto;padding:0 16px}',
-    '.card{background:#1e293b;border-radius:12px;padding:24px;margin-bottom:20px;border:1px solid #334155}',
-    '.card h2{font-size:14px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:20px}',
-    '.form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}',
-    '.form-group{margin-bottom:16px}',
-    '.form-group label{display:block;font-size:14px;color:#94a3b8;margin-bottom:6px}',
-    'select,input[type=text],input[type=number]{width:100%;padding:10px 14px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:14px;outline:none;transition:border-color .2s}',
-    'select:focus,input:focus{border-color:#3b82f6}',
-    '.src-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-top:4px}',
-    '.src-label{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#0f172a;border:1px solid #334155;border-radius:8px;cursor:pointer;transition:border-color .2s;font-size:14px}',
-    '.src-label:hover{border-color:#3b82f6}',
-    '.src-label input{width:16px;height:16px;accent-color:#3b82f6;flex-shrink:0}',
-    '.toggle{display:flex;align-items:center;gap:12px;margin-top:8px}',
-    '.toggle input[type=checkbox]{width:40px;height:22px;appearance:none;background:#334155;border-radius:11px;position:relative;cursor:pointer;transition:background .2s}',
-    '.toggle input[type=checkbox]:checked{background:#3b82f6}',
-    '.toggle input[type=checkbox]::after{content:"";width:18px;height:18px;background:white;border-radius:50%;position:absolute;top:2px;left:2px;transition:left .2s}',
-    '.toggle input[type=checkbox]:checked::after{left:20px}',
-    '.btn{padding:10px 20px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:600;transition:all .2s}',
-    '.btn-primary{background:#3b82f6;color:white}.btn-primary:hover{background:#2563eb}',
-    '.btn-success{background:#10b981;color:white}.btn-success:hover{background:#059669}',
-    '.btn-secondary{background:#334155;color:#e2e8f0}.btn-secondary:hover{background:#475569}',
-    '.btn-group{display:flex;gap:12px;flex-wrap:wrap}',
-    '.alert{padding:12px 16px;border-radius:8px;font-size:14px;margin-top:16px;display:none}',
-    '.alert-success{background:#064e3b;color:#6ee7b7;border:1px solid #10b981}',
-    '.alert-error{background:#450a0a;color:#fca5a5;border:1px solid #ef4444}',
-    '.ai-summary{background:#1e1b4b;border:1px solid #4338ca;border-radius:8px;padding:16px;margin-bottom:16px;font-size:14px;line-height:1.8;color:#c7d2fe}',
-    '.ai-label{font-size:12px;color:#818cf8;margin-bottom:8px;font-weight:600}',
-    '.preview-item{padding:12px;background:#0f172a;border-radius:8px;margin-bottom:8px;border-left:3px solid #3b82f6}',
-    '.preview-item a{color:#60a5fa;text-decoration:none;font-size:14px;line-height:1.5}',
-    '.src-tag{display:inline-block;padding:2px 8px;border-radius:4px;background:#1e3a5f;color:#60a5fa;font-size:11px;margin-right:6px;margin-bottom:4px}',
-    '@media(max-width:600px){.form-row{grid-template-columns:1fr}}',
-  ].join('\n');
+/* Top bar */
+.topbar { height: 52px; background: var(--sidebar-bg); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 16px; gap: 12px; position: fixed; top: 0; left: 0; right: 0; z-index: 100; }
+.topbar-logo { font-size: 15px; font-weight: 700; color: var(--accent); display: flex; align-items: center; gap: 6px; }
+.topbar-logo span { font-size: 20px; }
+.menu-btn { width: 32px; height: 32px; border: none; background: none; cursor: pointer; display: flex; flex-direction: column; justify-content: center; gap: 5px; padding: 4px; border-radius: 6px; }
+.menu-btn:hover { background: var(--bg); }
+.menu-btn i { display: block; height: 2px; background: var(--text-secondary); border-radius: 2px; transition: .2s; }
+.topbar-right { margin-left: auto; display: flex; gap: 8px; }
+.topbar-btn { padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--card-bg); color: var(--text); font-size: 13px; cursor: pointer; transition: all .15s; white-space: nowrap; }
+.topbar-btn:hover { background: var(--accent); color: white; border-color: var(--accent); }
+.topbar-btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
+.topbar-btn.primary:hover { background: #1d4ed8; }
+
+/* Layout */
+.layout { display: flex; margin-top: 52px; min-height: calc(100vh - 52px); }
+
+/* Sidebar */
+.sidebar { width: var(--sidebar-w); background: var(--sidebar-bg); border-right: 1px solid var(--border); position: fixed; top: 52px; bottom: 0; left: 0; overflow-y: auto; z-index: 50; transition: transform .25s; display: flex; flex-direction: column; }
+.sidebar-section { padding: 16px 12px 8px; }
+.sidebar-section-title { font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .06em; padding: 0 8px; margin-bottom: 4px; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 14px; color: var(--text-secondary); transition: all .15s; margin-bottom: 2px; }
+.nav-item:hover { background: var(--bg); color: var(--text); }
+.nav-item.active { background: var(--accent-light); color: var(--accent); font-weight: 600; }
+.nav-icon { font-size: 16px; width: 20px; text-align: center; }
+
+/* Settings panel in sidebar */
+.settings-panel { padding: 8px 12px 16px; border-top: 1px solid var(--border); margin-top: auto; }
+.settings-title { font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .06em; padding: 12px 8px 8px; }
+.form-group { margin-bottom: 10px; }
+.form-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; display: block; padding: 0 2px; }
+.form-control { width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; color: var(--text); background: var(--bg); outline: none; transition: border .15s; }
+.form-control:focus { border-color: var(--accent); background: white; }
+.toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 2px; }
+.toggle-label { font-size: 13px; color: var(--text); }
+.toggle { position: relative; width: 36px; height: 20px; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-slider { position: absolute; inset: 0; background: #d1d5db; border-radius: 20px; cursor: pointer; transition: .2s; }
+.toggle-slider::after { content: ''; position: absolute; width: 16px; height: 16px; background: white; border-radius: 50%; top: 2px; left: 2px; transition: .2s; }
+.toggle input:checked + .toggle-slider { background: var(--accent); }
+.toggle input:checked + .toggle-slider::after { transform: translateX(16px); }
+.src-region-label { font-size: 11px; color: var(--text-secondary); font-weight: 600; padding: 6px 2px 3px; text-transform: uppercase; letter-spacing: .04em; }
+.src-item { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: 12px; color: var(--text-secondary); transition: all .15s; margin-bottom: 1px; }
+.src-item input { display: none; }
+.src-item.active { color: var(--accent); background: var(--accent-light); }
+.src-item:hover { background: var(--bg); color: var(--text); }
+.save-btn { width: 100%; padding: 9px; background: var(--accent); color: white; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 10px; transition: background .15s; }
+.save-btn:hover { background: #1d4ed8; }
+
+/* Main content */
+.main { margin-left: var(--sidebar-w); flex: 1; padding: 24px; min-width: 0; }
+.news-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.news-title { font-size: 22px; font-weight: 700; color: var(--text); }
+.news-count { font-size: 13px; color: var(--text-secondary); background: var(--border); padding: 3px 10px; border-radius: 20px; }
+
+/* Summary card */
+.summary-card { background: var(--summary-bg); border-radius: var(--radius); padding: 20px 24px; margin-bottom: 20px; color: white; }
+.summary-header { margin-bottom: 10px; }
+.ai-badge { font-size: 12px; font-weight: 700; background: rgba(255,255,255,0.2); padding: 3px 10px; border-radius: 20px; letter-spacing: .04em; }
+.summary-body { font-size: 14px; line-height: 1.8; opacity: .95; }
+
+/* News grid */
+.news-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.news-card { background: var(--card-bg); border-radius: var(--radius); padding: 16px; border: 1px solid var(--border); text-decoration: none; color: inherit; display: block; transition: all .15s; box-shadow: var(--shadow); }
+.news-card:hover { box-shadow: var(--shadow-hover); border-color: var(--accent); transform: translateY(-1px); }
+.card-meta { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.card-source { font-size: 11px; font-weight: 600; color: var(--accent); background: var(--accent-light); padding: 2px 8px; border-radius: 20px; }
+.card-time { font-size: 11px; color: var(--text-secondary); }
+.card-title { font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.5; margin-bottom: 6px; }
+.card-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* Loading */
+.loading { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 80px 20px; gap: 16px; color: var(--text-secondary); }
+.spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.error-msg { text-align: center; padding: 60px 20px; color: #ef4444; font-size: 14px; }
+
+/* Toast */
+.toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: 10px; font-size: 14px; font-weight: 500; opacity: 0; transform: translateY(10px); transition: all .25s; pointer-events: none; z-index: 999; max-width: 320px; }
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.success { background: #064e3b; color: #6ee7b7; }
+.toast.error { background: #450a0a; color: #fca5a5; }
+.toast.info { background: #1e3a5f; color: #93c5fd; }
+
+/* Overlay */
+.overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.3); z-index: 40; }
+.overlay.show { display: block; }
+
+@media (max-width: 900px) {
+  .sidebar { transform: translateX(-100%); }
+  .sidebar.open { transform: translateX(0); }
+  .main { margin-left: 0; padding: 16px; }
+  .news-grid { grid-template-columns: 1fr; }
+}
+`;
 
   return [
     '<!DOCTYPE html>',
@@ -473,69 +621,84 @@ function renderHTML(config) {
     '<meta charset="UTF-8">',
     '<meta name="viewport" content="width=device-width,initial-scale=1.0">',
     '<title>中文新闻 Hub</title>',
-    '<style>', css, '</style>',
+    '<style>' + css + '</style>',
     '</head>',
     '<body>',
-    '<div class="header">',
-    '  <span style="font-size:32px">📰</span>',
-    '  <div>',
-    '    <h1>中文新闻 Hub</h1>',
-    '    <p style="color:#93c5fd;font-size:13px;margin-top:4px">港台·海外华文媒体聚合 · AI 摘要 · Telegram 推送</p>',
+
+    // Top bar
+    '<div class="topbar">',
+    '  <button class="menu-btn" onclick="toggleSidebar()"><i></i><i></i><i></i></button>',
+    '  <div class="topbar-logo"><span>📰</span>中文新闻 Hub</div>',
+    '  <div class="topbar-right">',
+    '    <button class="topbar-btn" onclick="loadNews()">🔄 刷新</button>',
+    '    <button class="topbar-btn primary" onclick="testPush()">📤 推送 TG</button>',
     '  </div>',
     '</div>',
-    '<div class="container">',
-    '  <div class="card">',
-    '    <h2>📡 新闻来源</h2>',
-    '    <p style="font-size:12px;color:#64748b;margin-bottom:12px">🇭🇰 香港：香港01、明报、东方日报　🇹🇼 台湾：自由时报、联合新闻网、中央社、中央广播电台　🌏 海外：自由亚洲电台、美国之音、BBC中文、端传媒、德国之声中文</p>',
-    '    <div class="src-grid">' + sourceCheckboxes + '</div>',
+
+    '<div class="overlay" id="overlay"></div>',
+
+    '<div class="layout">',
+
+    // Sidebar
+    '<div class="sidebar" id="sidebar">',
+    '  <div class="sidebar-section">',
+    '    <div class="sidebar-section-title">新闻分类</div>',
+    navItems,
     '  </div>',
-    '  <div class="card">',
-    '    <h2>⚙️ 基本设置</h2>',
-    '    <div class="form-row">',
-    '      <div class="form-group"><label>语言</label><select id="language">' + langOptions + '</select></div>',
-    '      <div class="form-group"><label>地区</label><select id="region">' + regionOptions + '</select></div>',
-    '    </div>',
-    '    <div class="form-row">',
-    '      <div class="form-group"><label>新闻分类</label><select id="category">' + catOptions + '</select></div>',
-    '      <div class="form-group"><label>每次推送条数</label><input type="number" id="maxItems" value="' + config.maxItems + '" min="1" max="50"></div>',
-    '    </div>',
-    '  </div>',
-    '  <div class="card">',
-    '    <h2>🔍 关键词过滤</h2>',
-    '    <div class="form-group"><label>包含关键词（逗号分隔，留空不过滤）</label><input type="text" id="keywords" value="' + config.keywords + '" placeholder="例如: 经济,科技"></div>',
-    '    <div class="form-group"><label>排除关键词</label><input type="text" id="excludeKeywords" value="' + config.excludeKeywords + '" placeholder="例如: 广告,推广"></div>',
-    '  </div>',
-    '  <div class="card">',
-    '    <h2>📨 推送设置</h2>',
-    '    <div class="form-row">',
-    '      <div class="form-group"><label>每日推送时间（北京时间）</label><select id="pushHour">' + hourOptions + '</select></div>',
-    '      <div class="form-group">',
-    '        <label>推送状态</label>',
-    '        <div class="toggle"><input type="checkbox" id="enabled"' + enabledChecked + '><label for="enabled" id="enabledLabel">' + enabledLabel + '</label></div>',
-    '      </div>',
-    '    </div>',
+
+    '  <div class="settings-panel">',
+    '    <div class="settings-title">⚙️ 设置</div>',
+
     '    <div class="form-group">',
-    '      <label>AI 摘要</label>',
-    '      <div class="toggle"><input type="checkbox" id="aiSummary"' + aiChecked + '><label for="aiSummary" id="aiSummaryLabel">' + aiLabel + '</label></div>',
+    '      <label class="form-label">新闻分类</label>',
+    '      <select class="form-control" id="cat-select">' + catOptions + '</select>',
     '    </div>',
-    '  </div>',
-    '  <div class="card">',
-    '    <h2>🎮 操作</h2>',
-    '    <div class="btn-group">',
-    '      <button class="btn btn-primary" onclick="saveConfig()">💾 保存配置</button>',
-    '      <button class="btn btn-success" onclick="testPush()">📤 立即测试推送</button>',
-    '      <button class="btn btn-secondary" onclick="previewNews()">👁 预览新闻</button>',
+
+    '    <div class="form-group">',
+    '      <label class="form-label">推送条数</label>',
+    '      <input class="form-control" type="number" id="max-input" value="' + config.maxItems + '" min="1" max="50">',
     '    </div>',
-    '    <div id="alert" class="alert"></div>',
-    '  </div>',
-    '  <div class="card" id="previewCard" style="display:none">',
-    '    <h2>📋 新闻预览</h2>',
-    '    <div id="previewList"></div>',
+
+    '    <div class="form-group">',
+    '      <label class="form-label">包含关键词</label>',
+    '      <input class="form-control" type="text" id="kw-input" value="' + config.keywords + '" placeholder="逗号分隔">',
+    '    </div>',
+
+    '    <div class="form-group">',
+    '      <label class="form-label">排除关键词</label>',
+    '      <input class="form-control" type="text" id="exkw-input" value="' + config.excludeKeywords + '" placeholder="逗号分隔">',
+    '    </div>',
+
+    '    <div class="form-group">',
+    '      <label class="form-label">每日推送时间（北京时间）</label>',
+    '      <select class="form-control" id="hour-select">' + hourOptions + '</select>',
+    '    </div>',
+
+    '    <div class="toggle-row">',
+    '      <span class="toggle-label">定时推送</span>',
+    '      <label class="toggle"><input type="checkbox" id="enabled-toggle"' + (config.enabled ? ' checked' : '') + '><span class="toggle-slider"></span></label>',
+    '    </div>',
+    '    <div class="toggle-row">',
+    '      <span class="toggle-label">AI 摘要</span>',
+    '      <label class="toggle"><input type="checkbox" id="ai-toggle"' + (config.aiSummary !== false ? ' checked' : '') + '><span class="toggle-slider"></span></label>',
+    '    </div>',
+
+    '    <div class="settings-title" style="padding-top:14px">📡 新闻来源</div>',
+    '    <div id="src-grid"></div>',
+
+    '    <button class="save-btn" onclick="saveConfig()">💾 保存配置</button>',
     '  </div>',
     '</div>',
-    '<script>',
-    buildClientScript(),
-    '</script>',
+
+    // Main
+    '<div class="main" id="main">',
+    '  <div id="news-area"><div class="loading"><div class="spinner"></div><p>正在加载新闻...</p></div></div>',
+    '</div>',
+
+    '</div>',
+
+    '<div class="toast" id="toast"></div>',
+    '<script>' + buildScript() + '</script>',
     '</body>',
     '</html>',
   ].join('\n');
