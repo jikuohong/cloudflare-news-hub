@@ -735,6 +735,7 @@ function showToast(msg, type) {
   setTimeout(function(){ t.className = 'toast'; }, 5000);
 }
 
+window.loadNews = loadNews;
 window.toggleSidebar = function() {
   sidebarOpen = !sidebarOpen;
   document.getElementById('sidebar').classList.toggle('open', sidebarOpen);
