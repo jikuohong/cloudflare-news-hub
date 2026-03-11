@@ -54,6 +54,13 @@ const NEWS_SOURCES = {
 };
 
 function getSourceUrl(key, config) {
+  if (key === 'googlezh') {
+    if (config && config.keywords) return 'https://news.google.com/rss/search?q=' + encodeURIComponent(config.keywords) + '&hl=zh-TW&gl=TW&ceid=TW:zh-Hant';
+    const catMap = { world:'WORLD', business:'BUSINESS', technology:'TECHNOLOGY', entertainment:'ENTERTAINMENT', sports:'SPORTS', science:'SCIENCE', health:'HEALTH' };
+    const cat = config && catMap[config.category];
+    if (cat) return 'https://news.google.com/rss/headlines/section/topic/' + cat + '?hl=zh-TW&gl=TW&ceid=TW:zh-Hant';
+    return 'https://news.google.com/rss?hl=zh-TW&gl=TW&ceid=TW:zh-Hant';
+  }
   const urls = {
     hk01:         'https://www.hk01.com/rss/世界專題',
     mingpao:      'https://news.mingpao.com/rss/pns/s00001.xml',
@@ -77,13 +84,7 @@ function getSourceUrl(key, config) {
     thenewslens:  'https://www.thenewslens.com/rss',
     ettoday:      'https://feeds.feedburner.com/ettoday/rss',
     setn:         'https://www.setn.com/rss.aspx',
-    googlezh: (() => {
-      if (config && config.keywords) return 'https://news.google.com/rss/search?q=' + encodeURIComponent(config.keywords) + '&hl=zh-TW&gl=TW&ceid=TW:zh-Hant';
-      const catMap = { world:'WORLD', business:'BUSINESS', technology:'TECHNOLOGY', entertainment:'ENTERTAINMENT', sports:'SPORTS', science:'SCIENCE', health:'HEALTH' };
-      const cat = config && catMap[config.category];
-      if (cat) return 'https://news.google.com/rss/headlines/section/topic/' + cat + '?hl=zh-TW&gl=TW&ceid=TW:zh-Hant';
-      return 'https://news.google.com/rss?hl=zh-TW&gl=TW&ceid=TW:zh-Hant';
-    })(),
+    googlezh: '__GOOGLEZH__',  // placeholder, resolved in getSourceUrl
   };
   return urls[key] || null;
 }
@@ -479,29 +480,29 @@ var readItems = new Set(JSON.parse(localStorage.getItem('readItems') || '[]'));
 var CATEGORIES = { general:'综合新闻', world:'国际', business:'财经', technology:'科技', entertainment:'娱乐', sports:'体育', science:'科学', health:'健康' };
 
 var SOURCE_LIST = {
-  hk01:{label:'香港01',flag:'\u{1F1ED}\u{1F1F0}',region:'\u9999\u6e2f',color:'#e63946'},
-  mingpao:{label:'\u660e\u62a5',flag:'\u{1F1ED}\u{1F1F0}',region:'\u9999\u6e2f',color:'#c1121f'},
-  orientaldaily:{label:'\u4e1c\u65b9\u65e5\u62a5',flag:'\u{1F1ED}\u{1F1F0}',region:'\u9999\u6e2f',color:'#d62828'},
-  singtao:{label:'\u661f\u5c9b\u65e5\u62a5',flag:'\u{1F1ED}\u{1F1F0}',region:'\u9999\u6e2f',color:'#e07c24'},
-  hkej:{label:'\u4fe1\u62a5',flag:'\u{1F1ED}\u{1F1F0}',region:'\u9999\u6e2f',color:'#b5563a'},
-  appledaily_tw:{label:'\u81ea\u7531\u65f6\u62a5',flag:'\u{1F1F9}\u{1F1FC}',region:'\u53f0\u6e7e',color:'#2196f3'},
-  udn:{label:'\u8054\u5408\u65b0\u95fb\u7f51',flag:'\u{1F1F9}\u{1F1FC}',region:'\u53f0\u6e7e',color:'#1565c0'},
-  cna:{label:'\u4e2d\u592e\u793e',flag:'\u{1F1F9}\u{1F1FC}',region:'\u53f0\u6e7e',color:'#0d47a1'},
-  rti:{label:'\u4e2d\u592e\u5e7f\u64ad\u7535\u53f0',flag:'\u{1F1F9}\u{1F1FC}',region:'\u53f0\u6e7e',color:'#1976d2'},
-  storm:{label:'\u98ce\u4f20\u5a92',flag:'\u{1F1F9}\u{1F1FC}',region:'\u53f0\u6e7e',color:'#303f9f'},
-  thenewslens:{label:'\u5173\u952e\u8bc4\u8bba\u7f51',flag:'\u{1F1F9}\u{1F1FC}',region:'\u53f0\u6e7e',color:'#512da8'},
-  ettoday:{label:'ETtoday',flag:'\u{1F1F9}\u{1F1FC}',region:'\u53f0\u6e7e',color:'#7b1fa2'},
-  setn:{label:'\u4e09\u7acb\u65b0\u95fb',flag:'\u{1F1F9}\u{1F1FC}',region:'\u53f0\u6e7e',color:'#6a1b9a'},
-  rfa:{label:'\u81ea\u7531\u4e9a\u6d32\u7535\u53f0',flag:'\u{1F30F}',region:'\u6d77\u5916',color:'#2e7d32'},
-  voachinese:{label:'\u7f8e\u56fd\u4e4b\u97f3\u4e2d\u6587',flag:'\u{1F1FA}\u{1F1F8}',region:'\u6d77\u5916',color:'#1b5e20'},
-  bbc_chinese:{label:'BBC\u4e2d\u6587(\u7b80)',flag:'\u{1F1EC}\u{1F1E7}',region:'\u6d77\u5916',color:'#bf360c'},
-  bbc_trad:{label:'BBC\u4e2d\u6587(\u7e41)',flag:'\u{1F1EC}\u{1F1E7}',region:'\u6d77\u5916',color:'#d84315'},
-  initium:{label:'\u7aef\u4f20\u5a92',flag:'\u{1F4F0}',region:'\u6d77\u5916',color:'#4e342e'},
-  dwnews:{label:'\u5fb7\u56fd\u4e4b\u58f0\u4e2d\u6587',flag:'\u{1F1E9}\u{1F1EA}',region:'\u6d77\u5916',color:'#37474f'},
-  chosun:{label:'\u671d\u9c9c\u65e5\u62a5\u4e2d\u6587',flag:'\u{1F1F0}\u{1F1F7}',region:'\u6d77\u5916',color:'#00695c'},
-  zaobao:{label:'\u8054\u5408\u65e9\u62a5',flag:'\u{1F1F8}\u{1F1EC}',region:'\u6d77\u5916',color:'#004d40'},
-  duowei:{label:'\u591a\u7ef4\u65b0\u95fb',flag:'\u{1F4E1}',region:'\u6d77\u5916',color:'#455a64'},
-  googlezh:{label:'Google\u65b0\u95fb',flag:'\u{1F50D}',region:'\u805a\u5408',color:'#546e7a'},
+  hk01:{label:'香港01',flag:'🇭🇰',region:'\u9999\u6e2f',color:'#e63946'},
+  mingpao:{label:'\u660e\u62a5',flag:'🇭🇰',region:'\u9999\u6e2f',color:'#c1121f'},
+  orientaldaily:{label:'\u4e1c\u65b9\u65e5\u62a5',flag:'🇭🇰',region:'\u9999\u6e2f',color:'#d62828'},
+  singtao:{label:'\u661f\u5c9b\u65e5\u62a5',flag:'🇭🇰',region:'\u9999\u6e2f',color:'#e07c24'},
+  hkej:{label:'\u4fe1\u62a5',flag:'🇭🇰',region:'\u9999\u6e2f',color:'#b5563a'},
+  appledaily_tw:{label:'\u81ea\u7531\u65f6\u62a5',flag:'🇹🇼',region:'\u53f0\u6e7e',color:'#2196f3'},
+  udn:{label:'\u8054\u5408\u65b0\u95fb\u7f51',flag:'🇹🇼',region:'\u53f0\u6e7e',color:'#1565c0'},
+  cna:{label:'\u4e2d\u592e\u793e',flag:'🇹🇼',region:'\u53f0\u6e7e',color:'#0d47a1'},
+  rti:{label:'\u4e2d\u592e\u5e7f\u64ad\u7535\u53f0',flag:'🇹🇼',region:'\u53f0\u6e7e',color:'#1976d2'},
+  storm:{label:'\u98ce\u4f20\u5a92',flag:'🇹🇼',region:'\u53f0\u6e7e',color:'#303f9f'},
+  thenewslens:{label:'\u5173\u952e\u8bc4\u8bba\u7f51',flag:'🇹🇼',region:'\u53f0\u6e7e',color:'#512da8'},
+  ettoday:{label:'ETtoday',flag:'🇹🇼',region:'\u53f0\u6e7e',color:'#7b1fa2'},
+  setn:{label:'\u4e09\u7acb\u65b0\u95fb',flag:'🇹🇼',region:'\u53f0\u6e7e',color:'#6a1b9a'},
+  rfa:{label:'\u81ea\u7531\u4e9a\u6d32\u7535\u53f0',flag:'🌏',region:'\u6d77\u5916',color:'#2e7d32'},
+  voachinese:{label:'\u7f8e\u56fd\u4e4b\u97f3\u4e2d\u6587',flag:'🇺🇸',region:'\u6d77\u5916',color:'#1b5e20'},
+  bbc_chinese:{label:'BBC\u4e2d\u6587(\u7b80)',flag:'🇬🇧',region:'\u6d77\u5916',color:'#bf360c'},
+  bbc_trad:{label:'BBC\u4e2d\u6587(\u7e41)',flag:'🇬🇧',region:'\u6d77\u5916',color:'#d84315'},
+  initium:{label:'\u7aef\u4f20\u5a92',flag:'📰',region:'\u6d77\u5916',color:'#4e342e'},
+  dwnews:{label:'\u5fb7\u56fd\u4e4b\u58f0\u4e2d\u6587',flag:'🇩🇪',region:'\u6d77\u5916',color:'#37474f'},
+  chosun:{label:'\u671d\u9c9c\u65e5\u62a5\u4e2d\u6587',flag:'🇰🇷',region:'\u6d77\u5916',color:'#00695c'},
+  zaobao:{label:'\u8054\u5408\u65e9\u62a5',flag:'🇸🇬',region:'\u6d77\u5916',color:'#004d40'},
+  duowei:{label:'\u591a\u7ef4\u65b0\u95fb',flag:'📡',region:'\u6d77\u5916',color:'#455a64'},
+  googlezh:{label:'Google\u65b0\u95fb',flag:'🔍',region:'\u805a\u5408',color:'#546e7a'},
 };
 
 var config = {};
@@ -692,7 +693,7 @@ function renderNews(data) {
   var html = '';
 
   html += '<div class="news-header">';
-  html += '<h1 class="news-title">\u{1F4F0} ' + catTitle + '</h1>';
+  html += '<h1 class="news-title">📰 ' + catTitle + '</h1>';
   html += '<div style="display:flex;align-items:center;gap:8px">';
   html += '<span class="news-count" id="news-count">' + data.items.length + ' \u6761\u65b0\u95fb</span>';
   html += '</div></div>';
@@ -701,7 +702,7 @@ function renderNews(data) {
   html += '<div class="search-bar"><input class="search-input" type="text" placeholder="\u641c\u7d22\u65b0\u95fb\u6807\u9898\u3001\u6765\u6e90..." oninput="filterNews(this.value)" value="' + searchQuery + '"></div>';
 
   if (data.summary) {
-    html += '<div class="summary-card"><div class="summary-header"><span class="ai-badge">\u{1F916} AI \u6458\u8981</span></div>';
+    html += '<div class="summary-card"><div class="summary-header"><span class="ai-badge">🤖 AI \u6458\u8981</span></div>';
     html += '<div class="summary-body">' + data.summary.replace(/\n/g,'<br>') + '</div></div>';
   }
 
@@ -796,7 +797,7 @@ setInterval(updateClock, 1000);
 function applyTheme(dark) {
   document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
   var btn = document.getElementById('theme-btn');
-  if (btn) btn.textContent = dark ? '\u2600\uFE0F' : '\u{1F319}';
+  if (btn) btn.textContent = dark ? '\u2600\uFE0F' : '🌙';
 }
 function toggleTheme() {
   var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
