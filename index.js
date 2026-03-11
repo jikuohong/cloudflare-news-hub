@@ -115,12 +115,14 @@ async function fetchFromSource(sourceKey, config) {
     });
     if (!resp.ok) return [];
     const xml = await resp.text();
-    return parseRss(xml, src.label, src.flag, config);
+    return parseRss(xml, src.label, src.flag, config, config._maxAgeDays || 7);
   } catch { return []; }
 }
 
-function parseRss(xml, sourceName, sourceFlag, config) {
+function parseRss(xml, sourceName, sourceFlag, config, maxAgeDays) {
   const items = [];
+  const now = Date.now();
+  const maxMs = (maxAgeDays || 7) * 24 * 60 * 60 * 1000;
   const itemRegex = /<item>([\s\S]*?)<\/item>/g;
   let match;
   while ((match = itemRegex.exec(xml)) !== null) {
@@ -130,6 +132,13 @@ function parseRss(xml, sourceName, sourceFlag, config) {
     const desc  = cleanText(decodeHtml(extract(block, 'description')));
     const pubDate = extract(block, 'pubDate');
     if (!title || title.length < 5) continue;
+    // 时间过滤：有日期的过滤掉超期内容
+    if (pubDate) {
+      try {
+        const age = now - new Date(pubDate).getTime();
+        if (age > maxMs || age < 0) continue;
+      } catch(e) {}
+    }
     if (config.keywords) {
       const kws = config.keywords.split(/[,，\s]+/).filter(Boolean);
       if (!kws.some(k => title.includes(k))) continue;
@@ -231,7 +240,8 @@ async function sendToTelegram(env, message) {
 }
 
 async function buildTgMessage(env, config) {
-  const items = await fetchAllNews(config);
+  const tgConfig = { ...config, _maxAgeDays: 1 };
+  const items = await fetchAllNews(tgConfig);
   if (items.length === 0) throw new Error('没有获取到新闻');
   const catLabel = CATEGORIES[config.category] || '综合新闻';
   const now = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
