@@ -39,9 +39,9 @@ const NEWS_SOURCES = {
     label: '明报', flag: '🇭🇰',
     getUrl: () => 'https://news.mingpao.com/rss/pns/s00001.xml',
   },
-  scmp_chinese: {
-    label: '南华早报(中)', flag: '🇭🇰',
-    getUrl: () => 'https://www.scmp.com/rss/91/feed',
+  orientaldaily: {
+    label: '东方日报(港)', flag: '🇭🇰',
+    getUrl: () => 'https://orientaldaily.on.cc/rss/news.xml',
   },
   appledaily_tw: {
     label: '自由时报', flag: '🇹🇼',
@@ -486,7 +486,7 @@ function renderHTML(config) {
     '<div class="container">',
     '  <div class="card">',
     '    <h2>📡 新闻来源</h2>',
-    '    <p style="font-size:12px;color:#64748b;margin-bottom:12px">🇭🇰 香港：香港01、明报、南华早报(中)　🇹🇼 台湾：自由时报、联合新闻网、中央社、中央广播电台　🌏 海外：自由亚洲电台、美国之音、BBC中文、端传媒、德国之声中文</p>',
+    '    <p style="font-size:12px;color:#64748b;margin-bottom:12px">🇭🇰 香港：香港01、明报、东方日报　🇹🇼 台湾：自由时报、联合新闻网、中央社、中央广播电台　🌏 海外：自由亚洲电台、美国之音、BBC中文、端传媒、德国之声中文</p>',
     '    <div class="src-grid">' + sourceCheckboxes + '</div>',
     '  </div>',
     '  <div class="card">',
