@@ -1,5 +1,5 @@
 // ============================================================
-// Cloudflare News Hub - 单文件 Worker (含 AI 摘要 + 中文翻译)
+// Cloudflare News Hub - 单文件 Worker (中文媒体 + AI 摘要)
 // ============================================================
 
 const DEFAULT_CONFIG = {
@@ -12,7 +12,7 @@ const DEFAULT_CONFIG = {
   pushHour: '8',
   enabled: true,
   aiSummary: true,
-  sources: ['google', 'bbc', 'bloomberg', 'guardian', 'dw'],
+  sources: ['xinhua', 'people', 'cctv', 'chinadaily', 'guancha'],
 };
 
 const CATEGORIES = {
@@ -29,66 +29,57 @@ const CATEGORIES = {
 const LANGUAGES = {
   'zh-CN': '简体中文 (中国)',
   'zh-TW': '繁體中文 (台灣)',
-  'en-US': 'English (US)',
-  'ja-JP': '日本語',
-  'ko-KR': '한국어',
-  'fr-FR': 'Français',
-  'de-DE': 'Deutsch',
 };
 
+// ============================================================
+// 中文权威媒体新闻源
+// ============================================================
 const NEWS_SOURCES = {
-  google: {
-    label: 'Google News', flag: '🔍',
+  xinhua: {
+    label: '新华社', flag: '🔴',
+    getUrl: () => 'https://www.xinhuanet.com/rss/world.xml',
+  },
+  people: {
+    label: '人民网', flag: '🔴',
+    getUrl: () => 'https://www.people.com.cn/rss/politics.xml',
+  },
+  cctv: {
+    label: '央视新闻', flag: '📺',
+    getUrl: () => 'https://news.cctv.com/rss/china.xml',
+  },
+  chinadaily: {
+    label: '中国日报', flag: '📰',
+    getUrl: () => 'https://www.chinadaily.com.cn/rss/china_rss.xml',
+  },
+  guancha: {
+    label: '观察者网', flag: '🌐',
+    getUrl: () => 'https://www.guancha.cn/rss.xml',
+  },
+  huanqiu: {
+    label: '环球时报', flag: '🌏',
+    getUrl: () => 'https://www.huanqiu.com/rss/world.xml',
+  },
+  caixin: {
+    label: '财新网', flag: '💰',
+    getUrl: () => 'https://www.caixin.com/rss/caixinrss.xml',
+  },
+  thepaper: {
+    label: '澎湃新闻', flag: '💧',
+    getUrl: () => 'https://www.thepaper.cn/rss.xml',
+  },
+  yicai: {
+    label: '第一财经', flag: '📈',
+    getUrl: () => 'https://www.yicai.com/rss/',
+  },
+  googlezh: {
+    label: 'Google新闻(中文)', flag: '🔍',
     getUrl: (config) => {
-      const hl = config.language, gl = config.region;
-      if (config.keywords) return 'https://news.google.com/rss/search?q=' + encodeURIComponent(config.keywords) + '&hl=' + hl + '&gl=' + gl + '&ceid=' + gl + ':' + hl;
+      if (config.keywords) return 'https://news.google.com/rss/search?q=' + encodeURIComponent(config.keywords) + '&hl=zh-CN&gl=CN&ceid=CN:zh-Hans';
       const catMap = { world:'WORLD', business:'BUSINESS', technology:'TECHNOLOGY', entertainment:'ENTERTAINMENT', sports:'SPORTS', science:'SCIENCE', health:'HEALTH' };
       const cat = catMap[config.category];
-      if (cat) return 'https://news.google.com/rss/headlines/section/topic/' + cat + '?hl=' + hl + '&gl=' + gl + '&ceid=' + gl + ':' + hl;
-      return 'https://news.google.com/rss?hl=' + hl + '&gl=' + gl + '&ceid=' + gl + ':' + hl;
+      if (cat) return 'https://news.google.com/rss/headlines/section/topic/' + cat + '?hl=zh-CN&gl=CN&ceid=CN:zh-Hans';
+      return 'https://news.google.com/rss?hl=zh-CN&gl=CN&ceid=CN:zh-Hans';
     },
-  },
-  bbc: {
-    label: 'BBC News', flag: '🇬🇧',
-    getUrl: (config) => {
-      const catMap = { world:'world', business:'business', technology:'technology', science:'science_and_environment', health:'health', sports:'sport', entertainment:'entertainment_and_arts' };
-      return 'https://feeds.bbci.co.uk/news/' + (catMap[config.category] || 'world') + '/rss.xml';
-    },
-  },
-  bloomberg: {
-    label: '彭博社 Bloomberg', flag: '💹',
-    getUrl: () => 'https://feeds.bloomberg.com/markets/news.rss',
-  },
-  guardian: {
-    label: '卫报 The Guardian', flag: '🌐',
-    getUrl: (config) => {
-      const catMap = { world:'world', business:'business', technology:'technology', science:'science', health:'society', sports:'sport', entertainment:'culture' };
-      return 'https://www.theguardian.com/' + (catMap[config.category] || 'world') + '/rss';
-    },
-  },
-  dw: {
-    label: '德国之声 DW', flag: '📻',
-    getUrl: () => 'https://rss.dw.com/rdf/rss-en-all',
-  },
-  france24: {
-    label: 'France 24', flag: '🇫🇷',
-    getUrl: () => 'https://www.france24.com/en/rss',
-  },
-  aljazeera: {
-    label: '半岛电视台 Al Jazeera', flag: '🌍',
-    getUrl: () => 'https://www.aljazeera.com/xml/rss/all.xml',
-  },
-  nhk: {
-    label: 'NHK World', flag: '🇯🇵',
-    getUrl: () => 'https://www3.nhk.or.jp/rss/news/cat0.xml',
-  },
-  xinhua: {
-    label: '新华社', flag: '🇨🇳',
-    getUrl: () => 'https://feeds.feedburner.com/NewHuaNet-EnglishNews',
-  },
-  reuters: {
-    label: '路透社 Reuters', flag: '📡',
-    getUrl: () => 'https://feeds.reuters.com/reuters/topNews',
   },
 };
 
@@ -200,52 +191,6 @@ function decodeHtml(str) {
   return str.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'");
 }
 
-function isChinese(text) {
-  const cjk = (text.match(/[\u4e00-\u9fff]/g) || []).length;
-  return cjk / text.length > 0.25;
-}
-
-// ============================================================
-// AI 翻译：一次调用翻译所有标题，用 JSON 格式保证解析可靠
-// ============================================================
-async function translateTitles(env, items) {
-  if (!env.AI) return items;
-
-  const needTranslate = items
-    .map((item, i) => ({ i, title: item.title }))
-    .filter(x => !isChinese(x.title));
-
-  if (needTranslate.length === 0) return items;
-
-  try {
-    const inputJson = JSON.stringify(needTranslate.map(x => ({ id: x.i, text: x.title })));
-    const prompt = '将以下 JSON 数组中每条新闻标题翻译为简体中文，直接返回相同结构的 JSON 数组，字段名不变，只把 text 字段内容改为中文译文，不要输出任何其他内容：\n' + inputJson;
-
-    const response = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 1500,
-    });
-
-    const raw = (response?.choices?.[0]?.message?.content || '').trim();
-    // 提取 JSON 数组
-    const jsonMatch = raw.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) throw new Error('no json array found');
-    const parsed = JSON.parse(jsonMatch[0]);
-
-    // 将翻译结果写回 items
-    parsed.forEach(entry => {
-      if (typeof entry.id === 'number' && entry.text) {
-        items[entry.id].title = entry.text;
-      }
-    });
-  } catch (e) {
-    console.error('翻译失败:', e.message);
-    // 翻译失败不影响推送，保留原标题
-  }
-
-  return items;
-}
-
 // ============================================================
 // AI 摘要
 // ============================================================
@@ -254,7 +199,7 @@ async function summarizeWithAI(env, items, config) {
   try {
     const catLabel = CATEGORIES[config.category] || '综合';
     const newsList = items.map((item, i) => (i + 1) + '. ' + item.title).join('\n');
-    const prompt = '你是专业新闻编辑。以下是今日' + catLabel + '新闻标题（均为中文），请：\n1. 提炼 3-5 个最重要要点，每点 1-2 句，简洁专业\n2. 最后一句给出今日趋势或值得关注的信号\n\n' + newsList + '\n\n直接输出摘要，不要前缀。';
+    const prompt = '你是专业新闻编辑。以下是今日' + catLabel + '新闻标题，请：\n1. 提炼 3-5 个最重要要点，每点 1-2 句，简洁专业\n2. 最后一句给出今日趋势或值得关注的信号\n\n' + newsList + '\n\n直接输出摘要，不要前缀。';
     const response = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 600,
@@ -283,11 +228,8 @@ async function sendToTelegram(env, message) {
 }
 
 async function buildAndSend(env, config) {
-  let items = await fetchAllNews(config);
-  if (items.length === 0) throw new Error('没有获取到新闻');
-
-  // 翻译所有非中文标题
-  items = await translateTitles(env, items);
+  const items = await fetchAllNews(config);
+  if (items.length === 0) throw new Error('没有获取到新闻，请检查网络或新闻源配置');
 
   const catLabel = CATEGORIES[config.category] || '综合新闻';
   const now = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
@@ -345,15 +287,14 @@ async function handleTestPush(env) {
   try {
     const config = await getConfig(env);
     const count = await buildAndSend(env, config);
-    return Response.json({ success: true, message: '推送成功！共发送 ' + count + ' 条新闻（含中文翻译）' });
+    return Response.json({ success: true, message: '推送成功！共发送 ' + count + ' 条新闻' });
   } catch (e) { return Response.json({ success: false, message: e.message }, { status: 500 }); }
 }
 
 async function handlePreview(env) {
   try {
     const config = await getConfig(env);
-    let items = await fetchAllNews(config);
-    items = await translateTitles(env, items);
+    const items = await fetchAllNews(config);
     let summary = null;
     if (config.aiSummary !== false) summary = await summarizeWithAI(env, items, config);
     return Response.json({ success: true, items, summary });
@@ -399,7 +340,7 @@ function buildClientScript() {
   lines.push("  showAlert(data.message, data.success ? 'success' : 'error');");
   lines.push("};");
   lines.push("window.testPush = async function() {");
-  lines.push("  showAlert('\u6b63\u5728\u7ffb\u8bd1\u5e76\u63a8\u9001\uff0c\u8bf7\u7a0d\u5019\uff0820-40\u79d2\uff09...', 'success');");
+  lines.push("  showAlert('\u6b63\u5728\u62a5\u53d6\u65b0\u95fb\u5e76\u751f\u6210\u6458\u8981\uff0c\u8bf7\u7a0d\u5019\uff0810-20\u79d2\uff09...', 'success');");
   lines.push("  var resp = await fetch('/api/test', { method: 'POST' });");
   lines.push("  var data = await resp.json();");
   lines.push("  showAlert(data.message, data.success ? 'success' : 'error');");
@@ -408,7 +349,7 @@ function buildClientScript() {
   lines.push("  var card = document.getElementById('previewCard');");
   lines.push("  var list = document.getElementById('previewList');");
   lines.push("  card.style.display = 'block';");
-  lines.push("  list.innerHTML = '<p style=\"color:#94a3b8\">\u6b63\u5728\u6293\u53d6\u5e76\u7ffb\u8bd1\uff0c\u8bf7\u7a0d\u5019...</p>';");
+  lines.push("  list.innerHTML = '<p style=\"color:#94a3b8\">\u6b63\u5728\u6293\u53d6\u65b0\u95fb\uff0c\u8bf7\u7a0d\u5019...</p>';");
   lines.push("  var resp = await fetch('/api/preview');");
   lines.push("  var data = await resp.json();");
   lines.push("  if (!data.success) { list.innerHTML = '<p style=\"color:#f87171\">' + data.message + '</p>'; return; }");
@@ -432,7 +373,7 @@ function renderHTML(config) {
   const langOptions = Object.entries(LANGUAGES).map(function(e) {
     return '<option value="' + e[0] + '"' + (config.language === e[0] ? ' selected' : '') + '>' + e[1] + '</option>';
   }).join('');
-  const regionOptions = ['CN','TW','HK','US','JP','KR','FR','DE'].map(function(r) {
+  const regionOptions = ['CN','TW','HK'].map(function(r) {
     return '<option value="' + r + '"' + (config.region === r ? ' selected' : '') + '>' + r + '</option>';
   }).join('');
   const catOptions = Object.entries(CATEGORIES).map(function(e) {
@@ -455,7 +396,7 @@ function renderHTML(config) {
   const css = [
     '*{box-sizing:border-box;margin:0;padding:0}',
     'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}',
-    '.header{background:linear-gradient(135deg,#1e40af,#7c3aed);padding:24px 32px;display:flex;align-items:center;gap:16px}',
+    '.header{background:linear-gradient(135deg,#b91c1c,#991b1b);padding:24px 32px;display:flex;align-items:center;gap:16px}',
     '.header h1{font-size:24px;font-weight:700;color:white}',
     '.container{max-width:820px;margin:32px auto;padding:0 16px}',
     '.card{background:#1e293b;border-radius:12px;padding:24px;margin-bottom:20px;border:1px solid #334155}',
@@ -464,18 +405,18 @@ function renderHTML(config) {
     '.form-group{margin-bottom:16px}',
     '.form-group label{display:block;font-size:14px;color:#94a3b8;margin-bottom:6px}',
     'select,input[type=text],input[type=number]{width:100%;padding:10px 14px;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:14px;outline:none;transition:border-color .2s}',
-    'select:focus,input:focus{border-color:#3b82f6}',
+    'select:focus,input:focus{border-color:#ef4444}',
     '.src-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-top:4px}',
     '.src-label{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#0f172a;border:1px solid #334155;border-radius:8px;cursor:pointer;transition:border-color .2s;font-size:14px}',
-    '.src-label:hover{border-color:#3b82f6}',
-    '.src-label input{width:16px;height:16px;accent-color:#3b82f6;flex-shrink:0}',
+    '.src-label:hover{border-color:#ef4444}',
+    '.src-label input{width:16px;height:16px;accent-color:#ef4444;flex-shrink:0}',
     '.toggle{display:flex;align-items:center;gap:12px;margin-top:8px}',
     '.toggle input[type=checkbox]{width:40px;height:22px;appearance:none;background:#334155;border-radius:11px;position:relative;cursor:pointer;transition:background .2s}',
-    '.toggle input[type=checkbox]:checked{background:#3b82f6}',
+    '.toggle input[type=checkbox]:checked{background:#ef4444}',
     '.toggle input[type=checkbox]::after{content:"";width:18px;height:18px;background:white;border-radius:50%;position:absolute;top:2px;left:2px;transition:left .2s}',
     '.toggle input[type=checkbox]:checked::after{left:20px}',
     '.btn{padding:10px 20px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:600;transition:all .2s}',
-    '.btn-primary{background:#3b82f6;color:white}.btn-primary:hover{background:#2563eb}',
+    '.btn-primary{background:#ef4444;color:white}.btn-primary:hover{background:#dc2626}',
     '.btn-success{background:#10b981;color:white}.btn-success:hover{background:#059669}',
     '.btn-secondary{background:#334155;color:#e2e8f0}.btn-secondary:hover{background:#475569}',
     '.btn-group{display:flex;gap:12px;flex-wrap:wrap}',
@@ -484,9 +425,9 @@ function renderHTML(config) {
     '.alert-error{background:#450a0a;color:#fca5a5;border:1px solid #ef4444}',
     '.ai-summary{background:#1e1b4b;border:1px solid #4338ca;border-radius:8px;padding:16px;margin-bottom:16px;font-size:14px;line-height:1.8;color:#c7d2fe}',
     '.ai-label{font-size:12px;color:#818cf8;margin-bottom:8px;font-weight:600}',
-    '.preview-item{padding:12px;background:#0f172a;border-radius:8px;margin-bottom:8px;border-left:3px solid #3b82f6}',
-    '.preview-item a{color:#60a5fa;text-decoration:none;font-size:14px;line-height:1.5}',
-    '.src-tag{display:inline-block;padding:2px 8px;border-radius:4px;background:#1e3a5f;color:#60a5fa;font-size:11px;margin-right:6px;margin-bottom:4px}',
+    '.preview-item{padding:12px;background:#0f172a;border-radius:8px;margin-bottom:8px;border-left:3px solid #ef4444}',
+    '.preview-item a{color:#fca5a5;text-decoration:none;font-size:14px;line-height:1.5}',
+    '.src-tag{display:inline-block;padding:2px 8px;border-radius:4px;background:#450a0a;color:#fca5a5;font-size:11px;margin-right:6px;margin-bottom:4px}',
     '@media(max-width:600px){.form-row{grid-template-columns:1fr}}',
   ].join('\n');
 
@@ -496,15 +437,15 @@ function renderHTML(config) {
     '<head>',
     '<meta charset="UTF-8">',
     '<meta name="viewport" content="width=device-width,initial-scale=1.0">',
-    '<title>Cloudflare News Hub</title>',
+    '<title>中文新闻 Hub</title>',
     '<style>', css, '</style>',
     '</head>',
     '<body>',
     '<div class="header">',
     '  <span style="font-size:32px">📰</span>',
     '  <div>',
-    '    <h1>Cloudflare News Hub</h1>',
-    '    <p style="color:#93c5fd;font-size:13px;margin-top:4px">多源聚合 · AI翻译 · AI摘要 · Telegram推送</p>',
+    '    <h1>中文新闻 Hub</h1>',
+    '    <p style="color:#fca5a5;font-size:13px;margin-top:4px">中文权威媒体聚合 · AI 摘要 · Telegram 推送</p>',
     '  </div>',
     '</div>',
     '<div class="container">',
@@ -525,7 +466,7 @@ function renderHTML(config) {
     '  </div>',
     '  <div class="card">',
     '    <h2>🔍 关键词过滤</h2>',
-    '    <div class="form-group"><label>包含关键词（逗号分隔，留空不过滤）</label><input type="text" id="keywords" value="' + config.keywords + '" placeholder="例如: AI,人工智能"></div>',
+    '    <div class="form-group"><label>包含关键词（逗号分隔，留空不过滤）</label><input type="text" id="keywords" value="' + config.keywords + '" placeholder="例如: 经济,科技"></div>',
     '    <div class="form-group"><label>排除关键词</label><input type="text" id="excludeKeywords" value="' + config.excludeKeywords + '" placeholder="例如: 广告,推广"></div>',
     '  </div>',
     '  <div class="card">',
@@ -538,7 +479,7 @@ function renderHTML(config) {
     '      </div>',
     '    </div>',
     '    <div class="form-group">',
-    '      <label>AI 摘要（含自动翻译）</label>',
+    '      <label>AI 摘要</label>',
     '      <div class="toggle"><input type="checkbox" id="aiSummary"' + aiChecked + '><label for="aiSummary" id="aiSummaryLabel">' + aiLabel + '</label></div>',
     '    </div>',
     '  </div>',
@@ -552,7 +493,7 @@ function renderHTML(config) {
     '    <div id="alert" class="alert"></div>',
     '  </div>',
     '  <div class="card" id="previewCard" style="display:none">',
-    '    <h2>📋 新闻预览（中文）</h2>',
+    '    <h2>📋 新闻预览</h2>',
     '    <div id="previewList"></div>',
     '  </div>',
     '</div>',
