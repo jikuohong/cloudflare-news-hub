@@ -477,40 +477,42 @@ var currentCategory = 'general';
 var sidebarOpen = window.innerWidth > 900;
 var readItems = new Set(JSON.parse(localStorage.getItem('readItems') || '[]'));
 
-var CATEGORIES = { general:'综合新闻', world:'国际', business:'财经', technology:'科技', entertainment:'娱乐', sports:'体育', science:'科学', health:'健康' };
+var CATEGORIES = {general:'综合新闻',world:'国际',business:'财经',technology:'科技',entertainment:'娱乐',sports:'体育',science:'科学',health:'健康'};
 
 var SOURCE_LIST = {
-  hk01:{label:'香港01',flag:'🇭🇰',region:'\u9999\u6e2f',color:'#e63946'},
-  mingpao:{label:'\u660e\u62a5',flag:'🇭🇰',region:'\u9999\u6e2f',color:'#c1121f'},
-  orientaldaily:{label:'\u4e1c\u65b9\u65e5\u62a5',flag:'🇭🇰',region:'\u9999\u6e2f',color:'#d62828'},
-  singtao:{label:'\u661f\u5c9b\u65e5\u62a5',flag:'🇭🇰',region:'\u9999\u6e2f',color:'#e07c24'},
-  hkej:{label:'\u4fe1\u62a5',flag:'🇭🇰',region:'\u9999\u6e2f',color:'#b5563a'},
-  appledaily_tw:{label:'\u81ea\u7531\u65f6\u62a5',flag:'🇹🇼',region:'\u53f0\u6e7e',color:'#2196f3'},
-  udn:{label:'\u8054\u5408\u65b0\u95fb\u7f51',flag:'🇹🇼',region:'\u53f0\u6e7e',color:'#1565c0'},
-  cna:{label:'\u4e2d\u592e\u793e',flag:'🇹🇼',region:'\u53f0\u6e7e',color:'#0d47a1'},
-  rti:{label:'\u4e2d\u592e\u5e7f\u64ad\u7535\u53f0',flag:'🇹🇼',region:'\u53f0\u6e7e',color:'#1976d2'},
-  storm:{label:'\u98ce\u4f20\u5a92',flag:'🇹🇼',region:'\u53f0\u6e7e',color:'#303f9f'},
-  thenewslens:{label:'\u5173\u952e\u8bc4\u8bba\u7f51',flag:'🇹🇼',region:'\u53f0\u6e7e',color:'#512da8'},
-  ettoday:{label:'ETtoday',flag:'🇹🇼',region:'\u53f0\u6e7e',color:'#7b1fa2'},
-  setn:{label:'\u4e09\u7acb\u65b0\u95fb',flag:'🇹🇼',region:'\u53f0\u6e7e',color:'#6a1b9a'},
-  rfa:{label:'\u81ea\u7531\u4e9a\u6d32\u7535\u53f0',flag:'🌏',region:'\u6d77\u5916',color:'#2e7d32'},
-  voachinese:{label:'\u7f8e\u56fd\u4e4b\u97f3\u4e2d\u6587',flag:'🇺🇸',region:'\u6d77\u5916',color:'#1b5e20'},
-  bbc_chinese:{label:'BBC\u4e2d\u6587(\u7b80)',flag:'🇬🇧',region:'\u6d77\u5916',color:'#bf360c'},
-  bbc_trad:{label:'BBC\u4e2d\u6587(\u7e41)',flag:'🇬🇧',region:'\u6d77\u5916',color:'#d84315'},
-  initium:{label:'\u7aef\u4f20\u5a92',flag:'📰',region:'\u6d77\u5916',color:'#4e342e'},
-  dwnews:{label:'\u5fb7\u56fd\u4e4b\u58f0\u4e2d\u6587',flag:'🇩🇪',region:'\u6d77\u5916',color:'#37474f'},
-  chosun:{label:'\u671d\u9c9c\u65e5\u62a5\u4e2d\u6587',flag:'🇰🇷',region:'\u6d77\u5916',color:'#00695c'},
-  zaobao:{label:'\u8054\u5408\u65e9\u62a5',flag:'🇸🇬',region:'\u6d77\u5916',color:'#004d40'},
-  duowei:{label:'\u591a\u7ef4\u65b0\u95fb',flag:'📡',region:'\u6d77\u5916',color:'#455a64'},
-  googlezh:{label:'Google\u65b0\u95fb',flag:'🔍',region:'\u805a\u5408',color:'#546e7a'},
+  hk01:{label:'香港01',flag:'🇭🇰',region:'香港',color:'#e63946'},
+  mingpao:{label:'明报',flag:'🇭🇰',region:'香港',color:'#c1121f'},
+  orientaldaily:{label:'东方日报',flag:'🇭🇰',region:'香港',color:'#d62828'},
+  singtao:{label:'星岛日报',flag:'🇭🇰',region:'香港',color:'#e07c24'},
+  hkej:{label:'信报',flag:'🇭🇰',region:'香港',color:'#b5563a'},
+  appledaily_tw:{label:'自由时报',flag:'🇹🇼',region:'台湾',color:'#2196f3'},
+  udn:{label:'联合新闻网',flag:'🇹🇼',region:'台湾',color:'#1565c0'},
+  cna:{label:'中央社',flag:'🇹🇼',region:'台湾',color:'#0d47a1'},
+  rti:{label:'中央广播电台',flag:'🇹🇼',region:'台湾',color:'#1976d2'},
+  storm:{label:'风传媒',flag:'🇹🇼',region:'台湾',color:'#303f9f'},
+  thenewslens:{label:'关键评论网',flag:'🇹🇼',region:'台湾',color:'#512da8'},
+  ettoday:{label:'ETtoday',flag:'🇹🇼',region:'台湾',color:'#7b1fa2'},
+  setn:{label:'三立新闻',flag:'🇹🇼',region:'台湾',color:'#6a1b9a'},
+  rfa:{label:'自由亚洲电台',flag:'🌏',region:'海外',color:'#2e7d32'},
+  voachinese:{label:'美国之音中文',flag:'🇺🇸',region:'海外',color:'#1b5e20'},
+  bbc_chinese:{label:'BBC中文(简)',flag:'🇬🇧',region:'海外',color:'#bf360c'},
+  bbc_trad:{label:'BBC中文(繁)',flag:'🇬🇧',region:'海外',color:'#d84315'},
+  initium:{label:'端传媒',flag:'📰',region:'海外',color:'#4e342e'},
+  dwnews:{label:'德国之声中文',flag:'🇩🇪',region:'海外',color:'#37474f'},
+  chosun:{label:'朝鲜日报中文',flag:'🇰🇷',region:'海外',color:'#00695c'},
+  zaobao:{label:'联合早报',flag:'🇸🇬',region:'海外',color:'#004d40'},
+  duowei:{label:'多维新闻',flag:'📡',region:'海外',color:'#455a64'},
+  googlezh:{label:'Google新闻',flag:'🔍',region:'聚合',color:'#546e7a'},
 };
 
 var config = {};
 
 async function loadConfig() {
-  var r = await fetch('/api/config');
-  config = await r.json();
-  applyConfigToUI();
+  try {
+    var r = await fetch('/api/config');
+    config = await r.json();
+    applyConfigToUI();
+  } catch(e) { console.error('loadConfig error', e); }
 }
 
 function applyConfigToUI() {
@@ -521,7 +523,6 @@ function applyConfigToUI() {
   document.getElementById('hour-input').value = config.pushHours || '8,12,16,20';
   document.getElementById('enabled-toggle').checked = config.enabled !== false;
   document.getElementById('ai-toggle').checked = config.aiSummary !== false;
-  // push channels
   document.getElementById('tg-toggle').checked = config.tgEnabled !== false;
   document.getElementById('wxpusher-toggle').checked = !!config.wxpusherEnabled;
   document.getElementById('wxpusher-token').value = config.wxpusherToken || '';
@@ -546,15 +547,18 @@ function renderSourceGrid(selected) {
   Object.entries(SOURCE_LIST).forEach(function(e) {
     var k = e[0], v = e[1];
     if (!regions[v.region]) regions[v.region] = [];
-    regions[v.region].push(Object.assign({key:k}, v));
+    regions[v.region].push({key:k, label:v.label, flag:v.flag, color:v.color});
   });
   var html = '';
   Object.entries(regions).forEach(function(e) {
-    html += '<div class="src-region-label">' + e[0] + '</div>';
-    e[1].forEach(function(src) {
-      var checked = selected.includes(src.key) ? 'checked' : '';
-      html += '<label class="src-item ' + (checked?'active':'') + '" style="' + (checked?'--src-color:'+src.color:'') + '">';
-      html += '<input type="checkbox" value="' + src.key + '" ' + checked + ' onchange="toggleSrc(this, \'' + src.color + '\')">';
+    var regionName = e[0], srcs = e[1];
+    html += '<div class="src-region-label">' + regionName + '</div>';
+    srcs.forEach(function(src) {
+      var isChecked = selected.indexOf(src.key) !== -1;
+      var activeClass = isChecked ? ' active' : '';
+      var styleAttr = isChecked ? ' style="--src-color:' + src.color + '"' : '';
+      html += '<label class="src-item' + activeClass + '"' + styleAttr + '>';
+      html += '<input type="checkbox" value="' + src.key + '"' + (isChecked ? ' checked' : '') + ' onchange="toggleSrc(this,\'' + src.color + '\')">';
       html += '<span>' + src.flag + ' ' + src.label + '</span></label>';
     });
   });
@@ -581,7 +585,7 @@ function selectCategory(cat) {
 }
 
 async function saveConfig() {
-  var sources = Array.from(document.querySelectorAll('#src-grid input:checked')).map(function(el){return el.value;});
+  var sources = Array.from(document.querySelectorAll('#src-grid input:checked')).map(function(el){ return el.value; });
   var newConf = {
     category: document.getElementById('cat-select').value,
     keywords: document.getElementById('kw-input').value,
@@ -609,68 +613,73 @@ async function saveConfig() {
   config = newConf;
   currentCategory = newConf.category;
   updateNavActive();
-  var r = await fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(newConf)});
-  var d = await r.json();
-  showToast(d.message, d.success ? 'success' : 'error');
-  loadNews();
+  try {
+    var r = await fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(newConf)});
+    var d = await r.json();
+    showToast(d.message, d.success ? 'success' : 'error');
+    loadNews();
+  } catch(e) { showToast('保存失败: ' + e.message, 'error'); }
 }
 
 async function testPush() {
-  showToast('\u6b63\u5728\u63a8\u9001\uff0c\u8bf7\u7a0d\u5019...', 'info');
-  var r = await fetch('/api/test', {method:'POST'});
-  var d = await r.json();
-  showToast(d.message, d.success ? 'success' : 'error');
+  showToast('正在推送，请稍候...', 'info');
+  try {
+    var r = await fetch('/api/test', {method:'POST'});
+    var d = await r.json();
+    showToast(d.message, d.success ? 'success' : 'error');
+  } catch(e) { showToast('推送失败: ' + e.message, 'error'); }
 }
 
 async function checkHealth() {
-  showToast('\u6b63\u5728\u68c0\u6d4b\u6765\u6e90\u5065\u5eb7...', 'info');
-  var r = await fetch('/api/health');
-  var d = await r.json();
-  if (!d.success) { showToast('\u68c0\u6d4b\u5931\u8d25', 'error'); return; }
-  var ok = d.health.filter(function(h){return h.ok;}).length;
-  var fail = d.health.filter(function(h){return !h.ok;});
-  var msg = '\u5065\u5eb7: ' + ok + '/' + d.health.length + '\u4e2a\u6e90\u53ef\u7528';
-  if (fail.length) msg += '\uff0c\u5931\u8d25: ' + fail.map(function(f){return f.label||f.key;}).join(', ');
-  showToast(msg, fail.length ? 'error' : 'success');
-  // Mark failed sources in sidebar
-  d.health.forEach(function(h) {
-    var el = document.querySelector('#src-grid input[value="' + h.key + '"]');
-    if (el) {
-      el.parentElement.classList.toggle('src-fail', !h.ok);
-    }
-  });
+  showToast('正在检测来源健康...', 'info');
+  try {
+    var r = await fetch('/api/health');
+    var d = await r.json();
+    if (!d.success) { showToast('检测失败', 'error'); return; }
+    var ok = d.health.filter(function(h){ return h.ok; }).length;
+    var fail = d.health.filter(function(h){ return !h.ok; });
+    var msg = '健康: ' + ok + '/' + d.health.length + ' 个源可用';
+    if (fail.length) msg += '，失败: ' + fail.map(function(f){ return f.label || f.key; }).join(', ');
+    showToast(msg, fail.length ? 'error' : 'success');
+    d.health.forEach(function(h) {
+      var el = document.querySelector('#src-grid input[value="' + h.key + '"]');
+      if (el) el.parentElement.classList.toggle('src-fail', !h.ok);
+    });
+  } catch(e) { showToast('检测失败: ' + e.message, 'error'); }
 }
 
 var searchQuery = '';
 function filterNews(q) {
   searchQuery = q.toLowerCase();
-  document.querySelectorAll('.news-card').forEach(function(card) {
-    var title = card.querySelector('.card-title').textContent.toLowerCase();
-    var src = card.querySelector('.card-source').textContent.toLowerCase();
-    card.style.display = (!searchQuery || title.includes(searchQuery) || src.includes(searchQuery)) ? '' : 'none';
+  var cards = document.querySelectorAll('.news-card');
+  var visible = 0;
+  cards.forEach(function(card) {
+    var title = (card.querySelector('.card-title') || {}).textContent || '';
+    var src = (card.querySelector('.card-source') || {}).textContent || '';
+    var show = !searchQuery || title.toLowerCase().indexOf(searchQuery) !== -1 || src.toLowerCase().indexOf(searchQuery) !== -1;
+    card.style.display = show ? '' : 'none';
+    if (show) visible++;
   });
-  var visible = document.querySelectorAll('.news-card:not([style*="none"])').length;
   var countEl = document.getElementById('news-count');
-  if (countEl) countEl.textContent = searchQuery ? visible + ' \u6761\u5339\u914d' : visible + ' \u6761\u65b0\u95fb';
+  if (countEl) countEl.textContent = searchQuery ? (visible + ' 条匹配') : (visible + ' 条新闻');
 }
 
 function markRead(titleKey) {
   readItems.add(titleKey);
-  localStorage.setItem('readItems', JSON.stringify([...readItems].slice(-300)));
+  try { localStorage.setItem('readItems', JSON.stringify(Array.from(readItems).slice(-300))); } catch(e) {}
 }
 
 async function loadNews() {
   var area = document.getElementById('news-area');
-  area.innerHTML = '<div class="loading"><div class="spinner"></div><p>\u6b63\u5728\u6293\u53d6\u65b0\u95fb...</p></div>';
+  area.innerHTML = '<div class="loading"><div class="spinner"></div><p>正在抓取新闻...</p></div>';
   try {
     var r = await fetch('/api/news');
     var d = await r.json();
-    if (!d.success) { area.innerHTML = '<div class="error-msg">\u83b7\u53d6\u5931\u8d25\uff1a' + d.message + '</div>'; return; }
+    if (!d.success) { area.innerHTML = '<div class="error-msg">获取失败：' + (d.message||'未知错误') + '</div>'; return; }
     renderNews(d);
-    // Re-apply search filter if active
     if (searchQuery) filterNews(searchQuery);
   } catch(e) {
-    area.innerHTML = '<div class="error-msg">\u7f51\u7edc\u9519\u8bef\uff0c\u8bf7\u5237\u65b0\u91cd\u8bd5</div>';
+    area.innerHTML = '<div class="error-msg">网络错误，请刷新重试</div>';
   }
 }
 
@@ -678,32 +687,29 @@ function timeAgo(dateStr) {
   if (!dateStr) return '';
   try {
     var diff = Date.now() - new Date(dateStr).getTime();
-    var m = Math.floor(diff/60000);
-    if (m < 1) return '\u521a\u521a';
-    if (m < 60) return m + '\u5206\u949f\u524d';
-    var h = Math.floor(m/60);
-    if (h < 24) return h + '\u5c0f\u65f6\u524d';
-    return Math.floor(h/24) + '\u5929\u524d';
+    var m = Math.floor(diff / 60000);
+    if (m < 1) return '刚刚';
+    if (m < 60) return m + '分钟前';
+    var h = Math.floor(m / 60);
+    if (h < 24) return h + '小时前';
+    return Math.floor(h / 24) + '天前';
   } catch(e) { return ''; }
 }
 
 function renderNews(data) {
   var area = document.getElementById('news-area');
-  var catTitle = data.category || '\u7efc\u5408\u65b0\u95fb';
-  var html = '';
+  var catTitle = data.category || '综合新闻';
 
-  html += '<div class="news-header">';
+  var html = '<div class="news-header">';
   html += '<h1 class="news-title">📰 ' + catTitle + '</h1>';
-  html += '<div style="display:flex;align-items:center;gap:8px">';
-  html += '<span class="news-count" id="news-count">' + data.items.length + ' \u6761\u65b0\u95fb</span>';
-  html += '</div></div>';
+  html += '<span class="news-count" id="news-count">' + data.items.length + ' 条新闻</span>';
+  html += '</div>';
 
-  // 搜索框
-  html += '<div class="search-bar"><input class="search-input" type="text" placeholder="\u641c\u7d22\u65b0\u95fb\u6807\u9898\u3001\u6765\u6e90..." oninput="filterNews(this.value)" value="' + searchQuery + '"></div>';
+  html += '<div class="search-bar"><input class="search-input" type="text" placeholder="搜索新闻标题、来源..." oninput="filterNews(this.value)" value=""></div>';
 
   if (data.summary) {
-    html += '<div class="summary-card"><div class="summary-header"><span class="ai-badge">🤖 AI \u6458\u8981</span></div>';
-    html += '<div class="summary-body">' + data.summary.replace(/\n/g,'<br>') + '</div></div>';
+    html += '<div class="summary-card"><div class="summary-header"><span class="ai-badge">🤖 AI 摘要</span></div>';
+    html += '<div class="summary-body">' + data.summary.replace(/\n/g, '<br>') + '</div></div>';
   }
 
   html += '<div class="news-grid">';
@@ -712,60 +718,46 @@ function renderNews(data) {
     var titleKey = item.title.slice(0, 30);
     var isRead = readItems.has(titleKey);
     var color = item.color || '#2563eb';
-    html += '<a class="news-card' + (isRead?' read':'') + '" href="' + item.link + '" target="_blank" onclick="markRead(\'' + titleKey.replace(/'/g,"\\'") + '\')">';
+    var safeLink = (item.link || '').replace(/"/g, '%22');
+    var cardClass = 'news-card' + (isRead ? ' read' : '');
+    html += '<div class="' + cardClass + '" onclick="openNews(this)" data-href="' + safeLink + '" data-key="' + titleKey.replace(/"/g, '') + '">';
     html += '<div class="card-left">';
-    html += '<span class="card-source" style="background:' + color + '20;color:' + color + '">' + item.flag + ' ' + item.source + '</span>';
+    html += '<span class="card-source" style="background:' + color + '20;color:' + color + '">' + (item.flag || '') + ' ' + (item.source || '') + '</span>';
     if (ago) html += '<span class="card-time">' + ago + '</span>';
     html += '</div>';
     html += '<div class="card-body">';
-    html += '<div class="card-title">' + item.title + '</div>';
+    html += '<div class="card-title">' + (item.title || '') + '</div>';
     if (item.desc) html += '<div class="card-desc">' + item.desc + '</div>';
     html += '</div>';
-    if (isRead) html += '<span class="read-badge">\u5df2\u8bfb</span>';
-    html += '</a>';
+    if (isRead) html += '<span class="read-badge">已读</span>';
+    html += '</div>';
   });
   html += '</div>';
   area.innerHTML = html;
 }
 
+function openNews(el) {
+  var href = el.getAttribute('data-href');
+  var key = el.getAttribute('data-key');
+  if (key) markRead(key);
+  el.classList.add('read');
+  if (href) window.open(href, '_blank');
+}
+
 function showToast(msg, type) {
   var t = document.getElementById('toast');
   t.textContent = msg;
-  t.className = 'toast show ' + (type||'info');
-  setTimeout(function(){ t.className = 'toast'; }, 5000);
+  t.className = 'toast show ' + (type || 'info');
+  setTimeout(function() { t.className = 'toast'; }, 5000);
 }
 
-window.loadNews = loadNews;
-window.toggleSidebar = function() {
-  sidebarOpen = !sidebarOpen;
-  document.getElementById('sidebar').classList.toggle('open', sidebarOpen);
-  document.getElementById('overlay').classList.toggle('show', sidebarOpen && window.innerWidth <= 900);
-};
-window.selectCategory = selectCategory;
-window.saveConfig = saveConfig;
-window.testPush = testPush;
-window.checkHealth = checkHealth;
-window.filterNews = filterNews;
-window.markRead = markRead;
-
-document.addEventListener('DOMContentLoaded', function() {
-  loadConfig().then(function(){ loadNews(); });
-  document.getElementById('overlay').addEventListener('click', function(){
-    if(window.innerWidth <= 900) {
-      sidebarOpen = false;
-      document.getElementById('sidebar').classList.remove('open');
-      document.getElementById('overlay').classList.remove('show');
-    }
-  });
-});
-
-// ── 时钟 ──
+// Clock
 function lunarDate(date) {
-  var lunarMonths = ['\u6b63','\u4e8c','\u4e09','\u56db','\u4e94','\u516d','\u4e03','\u516b','\u4e5d','\u5341','\u51ac','\u814a'];
-  var lunarDays = ['\u521d\u4e00','\u521d\u4e8c','\u521d\u4e09','\u521d\u56db','\u521d\u4e94','\u521d\u516d','\u521d\u4e03','\u521d\u516b','\u521d\u4e5d','\u521d\u5341','\u5341\u4e00','\u5341\u4e8c','\u5341\u4e09','\u5341\u56db','\u5341\u4e94','\u5341\u516d','\u5341\u4e03','\u5341\u516b','\u5341\u4e5d','\u4e8c\u5341','\u5eff\u4e00','\u5eff\u4e8c','\u5eff\u4e09','\u5eff\u56db','\u5eff\u4e94','\u5eff\u516d','\u5eff\u4e03','\u5eff\u516b','\u5eff\u4e5d','\u4e09\u5341'];
-  var heavenly = ['\u7532','\u4e59','\u4e19','\u4e01','\u620a','\u5df1','\u5e9a','\u8f9b','\u58ec','\u7678'];
-  var earthly = ['\u5b50','\u4e11','\u5bc5','\u536f','\u8fb0','\u5df3','\u5348','\u672a','\u7533','\u9149','\u620c','\u4ea5'];
-  var animals = ['\u9f20','\u725b','\u864e','\u5154','\u9f99','\u86c7','\u9a6c','\u7f8a','\u7334','\u9e21','\u72d7','\u732a'];
+  var lunarMonths = ['正','二','三','四','五','六','七','八','九','十','冬','腊'];
+  var lunarDays = ['初一','初二','初三','初四','初五','初六','初七','初八','初九','初十','十一','十二','十三','十四','十五','十六','十七','十八','十九','二十','廿一','廿二','廿三','廿四','廿五','廿六','廿七','廿八','廿九','三十'];
+  var heavenly = ['甲','乙','丙','丁','戊','己','庚','辛','壬','癸'];
+  var earthly = ['子','丑','寅','卯','辰','巳','午','未','申','酉','戌','亥'];
+  var animals = ['鼠','牛','虎','兔','龙','蛇','马','羊','猴','鸡','狗','猪'];
   var baseDate = new Date(1900, 0, 31);
   var offset = Math.floor((date - baseDate) / 86400000);
   var approxYear = Math.floor(offset / 365.25) + 1900;
@@ -776,33 +768,33 @@ function lunarDate(date) {
   var dayInYear = offset % 354;
   var month = Math.min(11, Math.floor(dayInYear / 29.5));
   var day = Math.min(29, Math.floor(dayInYear % 29.5));
-  return stem + branch + '\u5e74\uff08' + animal + '\u5e74\uff09' + lunarMonths[month] + '\u6708' + lunarDays[day];
+  return stem + branch + '年（' + animal + '年）' + lunarMonths[month] + '月' + lunarDays[day];
 }
 
 function updateClock() {
   var now = new Date();
-  var weeks = ['\u661f\u671f\u65e5','\u661f\u671f\u4e00','\u661f\u671f\u4e8c','\u661f\u671f\u4e09','\u661f\u671f\u56db','\u661f\u671f\u4e94','\u661f\u671f\u516d'];
+  var weeks = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
   var te = document.getElementById('clock-time');
   var de = document.getElementById('clock-date');
   var we = document.getElementById('clock-week');
   var le = document.getElementById('clock-lunar');
   if (te) te.textContent = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ':' + String(now.getSeconds()).padStart(2,'0');
-  if (de) de.textContent = now.getFullYear() + '\u5e74' + String(now.getMonth()+1).padStart(2,'0') + '\u6708' + String(now.getDate()).padStart(2,'0') + '\u65e5';
+  if (de) de.textContent = now.getFullYear() + '年' + String(now.getMonth()+1).padStart(2,'0') + '月' + String(now.getDate()).padStart(2,'0') + '日';
   if (we) we.textContent = weeks[now.getDay()];
-  if (le) le.textContent = '\u519c\u5386 ' + lunarDate(now);
+  if (le) le.textContent = '农历 ' + lunarDate(now);
 }
 updateClock();
 setInterval(updateClock, 1000);
 
-// ── 深色/浅色模式 ──
+// Theme
 function applyTheme(dark) {
   document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
   var btn = document.getElementById('theme-btn');
-  if (btn) btn.textContent = dark ? '\u2600\uFE0F' : '🌙';
+  if (btn) btn.textContent = dark ? '☀️' : '🌙';
 }
 function toggleTheme() {
   var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-  localStorage.setItem('theme', !isDark ? 'dark' : 'light');
+  localStorage.setItem('theme', isDark ? 'light' : 'dark');
   applyTheme(!isDark);
 }
 function initTheme() {
@@ -814,13 +806,36 @@ function initTheme() {
   });
 }
 initTheme();
+
+// Sidebar
+window.loadNews = loadNews;
 window.toggleTheme = toggleTheme;
+window.toggleSidebar = function() {
+  sidebarOpen = !sidebarOpen;
+  document.getElementById('sidebar').classList.toggle('open', sidebarOpen);
+  document.getElementById('overlay').classList.toggle('show', sidebarOpen && window.innerWidth <= 900);
+};
+window.selectCategory = selectCategory;
+window.saveConfig = saveConfig;
+window.testPush = testPush;
+window.checkHealth = checkHealth;
+window.filterNews = filterNews;
+window.markRead = markRead;
+window.openNews = openNews;
+
+document.addEventListener('DOMContentLoaded', function() {
+  loadConfig().then(function() { loadNews(); });
+  document.getElementById('overlay').addEventListener('click', function() {
+    if (window.innerWidth <= 900) {
+      sidebarOpen = false;
+      document.getElementById('sidebar').classList.remove('open');
+      document.getElementById('overlay').classList.remove('show');
+    }
+  });
+});
 `;
 }
 
-// ============================================================
-// 渲染 HTML
-// ============================================================
 function renderHTML(config) {
   const catOptions = Object.entries(CATEGORIES).map(function(e) {
     return '<option value="' + e[0] + '"' + (config.category === e[0] ? ' selected' : '') + '>' + e[1] + '</option>';
