@@ -3,8 +3,8 @@
 // ============================================================
 
 const DEFAULT_CONFIG = {
-  category: 'general',      // 页面浏览分类
-  pushCategory: 'general',  // 推送分类（独立控制）
+  category: 'general',            // 页面浏览分类（单选，跟随导航栏）
+  pushCategories: ['general'],     // 推送分类（多选，独立控制）
   keywords: '',
   excludeKeywords: '',
   maxItems: 20,
@@ -15,14 +15,27 @@ const DEFAULT_CONFIG = {
 };
 
 const CATEGORIES = {
-  general:       '综合新闻',
-  world:         '国际',
-  business:      '财经',
-  technology:    '科技',
-  entertainment: '娱乐',
-  sports:        '体育',
-  science:       '科学',
-  health:        '健康',
+  // ── 综合 ──
+  general:        { label: '综合新闻',   icon: '📰', group: '综合' },
+  // ── 时事政治 ──
+  world:          { label: '国际',       icon: '🌍', group: '时事' },
+  china:          { label: '两岸三地',   icon: '🇨🇳', group: '时事' },
+  politics:       { label: '政治',       icon: '🏛️', group: '时事' },
+  society:        { label: '社会',       icon: '👥', group: '时事' },
+  // ── 财经 ──
+  business:       { label: '财经',       icon: '💹', group: '财经' },
+  markets:        { label: '股市',       icon: '📈', group: '财经' },
+  property:       { label: '房产',       icon: '🏠', group: '财经' },
+  // ── 科技 ──
+  technology:     { label: '科技',       icon: '💻', group: '科技' },
+  ai:             { label: 'AI 人工智能', icon: '🤖', group: '科技' },
+  // ── 生活 ──
+  health:         { label: '健康医疗',   icon: '❤️', group: '生活' },
+  entertainment:  { label: '娱乐',       icon: '🎬', group: '生活' },
+  sports:         { label: '体育',       icon: '⚽', group: '生活' },
+  science:        { label: '科学',       icon: '🔬', group: '生活' },
+  culture:        { label: '文化艺术',   icon: '🎨', group: '生活' },
+  travel:         { label: '旅游',       icon: '✈️', group: '生活' },
 };
 
 const NEWS_SOURCES = {
@@ -78,7 +91,14 @@ function getSourceUrl(key, config) {
     setn:         'https://www.setn.com/rss.aspx',
     googlezh:     (() => {
       if (config.keywords) return 'https://news.google.com/rss/search?q=' + encodeURIComponent(config.keywords) + '&hl=zh-TW&gl=TW&ceid=TW:zh-Hant';
-      const catMap = { world:'WORLD', business:'BUSINESS', technology:'TECHNOLOGY', entertainment:'ENTERTAINMENT', sports:'SPORTS', science:'SCIENCE', health:'HEALTH' };
+      const catMap = {
+        world:'WORLD', china:'WORLD', politics:'NATION', society:'NATION',
+        business:'BUSINESS', markets:'BUSINESS', property:'BUSINESS',
+        technology:'TECHNOLOGY', ai:'TECHNOLOGY',
+        health:'HEALTH', entertainment:'ENTERTAINMENT',
+        sports:'SPORTS', science:'SCIENCE',
+        culture:'ENTERTAINMENT', travel:'TRAVEL',
+      };
       const cat = catMap[config.category];
       if (cat) return 'https://news.google.com/rss/headlines/section/topic/' + cat + '?hl=zh-TW&gl=TW&ceid=TW:zh-Hant';
       return 'https://news.google.com/rss?hl=zh-TW&gl=TW&ceid=TW:zh-Hant';
@@ -290,7 +310,7 @@ function escapeTg(str) {
 async function summarizeWithAI(env, items, config) {
   if (!env.AI) return null;
   try {
-    const catLabel = CATEGORIES[config.category] || '综合';
+    const catLabel = (CATEGORIES[config.category] || {}).label || '综合';
     const newsList = items.map((item, i) => (i+1) + '. ' + item.title).join('\n');
     const prompt = '你是专业新闻编辑。以下是今日' + catLabel + '新闻标题，请：\n1. 提炼 3-5 个最重要要点，每点 1-2 句，简洁专业\n2. 最后一句给出今日趋势或值得关注的信号\n\n' + newsList + '\n\n直接输出摘要，不要前缀。';
     const response = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
@@ -325,7 +345,7 @@ async function handleNews(env) {
     const webConfig = { ...config, maxItems: 60, keywords: '', excludeKeywords: '' };
     const items = await fetchAllNews(webConfig, env);  // 优化⑤ 传入 env
     const summary = await getAISummary(env, items, config);  // 优化④ 统一缓存
-    return Response.json({ success: true, items, summary, category: CATEGORIES[config.category] || '综合新闻' });
+    return Response.json({ success: true, items, summary, category: (CATEGORIES[config.category] || {}).label || '综合新闻' });
   } catch (e) { return Response.json({ success: false, message: e.message }, { status: 500 }); }
 }
 
@@ -372,26 +392,59 @@ function filterAlreadyPushed(items, pushedTitles) {
   return items.filter(item => !isSimilarTitle(item.title, pushedSets));
 }
 
-// ── 构建消息 payload（含去重）────────────────────────────────
+// ── 构建消息 payload（含去重、多分类合并）────────────────────
 async function buildPlainMessage(env, config) {
-  // 推送使用独立的 pushCategory，不影响页面浏览分类
-  const pushConfig = { ...config, category: config.pushCategory || config.category, _maxAgeDays: 1 };
-  const allItems = await fetchAllNews(pushConfig, env);  // 优化⑤
+  // 兼容旧版单分类字段
+  const pushCategories = config.pushCategories
+    || (config.pushCategory ? [config.pushCategory] : null)
+    || [config.category || 'general'];
+
+  // 多分类并发抓取，合并去重
+  const allItemsPerCat = await Promise.all(
+    pushCategories.map(cat => {
+      const catConfig = { ...config, category: cat, _maxAgeDays: 1 };
+      return fetchAllNews(catConfig, env);
+    })
+  );
+
+  // 跨分类合并，用相似度再次去重
+  const merged = [];
+  const mergedTokenSets = [];
+  for (const items of allItemsPerCat) {
+    for (const item of items) {
+      if (!isSimilarTitle(item.title, mergedTokenSets)) {
+        mergedTokenSets.push(titleTokens(item.title));
+        merged.push(item);
+      }
+    }
+  }
+
+  // 按时间降序，截取 maxItems
+  merged.sort((a, b) => {
+    const ta = a.pubDate ? new Date(a.pubDate).getTime() : 0;
+    const tb = b.pubDate ? new Date(b.pubDate).getTime() : 0;
+    return tb - ta;
+  });
+  const allItems = merged.slice(0, config.maxItems || 20);
+
   if (allItems.length === 0) throw new Error('没有获取到新闻');
 
-  // 优化①：过滤已推送过的内容
+  // 跨批次去重
   const pushedTitles = await loadPushedTitles(env);
   const items = filterAlreadyPushed(allItems, pushedTitles);
-
   if (items.length === 0) throw new Error('没有新内容（本批次新闻已全部推送过）');
 
-  const catLabel = CATEGORIES[config.category] || '综合新闻';
+  // 分类标签：多个用 + 连接
+  const catLabel = pushCategories
+    .map(c => (CATEGORIES[c] || {}).label || c)
+    .join(' + ');
   const now = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
 
-  // 优化④：使用统一缓存获取 AI 摘要
-  const summary = await getAISummary(env, items, config);
+  // AI 摘要用第一个分类作为上下文
+  const summaryConfig = { ...config, category: pushCategories[0] };
+  const summary = await getAISummary(env, items, summaryConfig);
 
-  // 纯文本版（Bark / 钉钉 text）
+  // 纯文本版
   let plain = '📰 中文新闻 Hub\n';
   plain += '🗂 ' + catLabel + ' | 🕐 ' + now + '\n';
   if (summary) plain += '\n━━━ 🤖 AI 摘要 ━━━\n' + summary + '\n';
@@ -401,7 +454,7 @@ async function buildPlainMessage(env, config) {
   });
   plain += '\n共 ' + items.length + ' 条';
 
-  // Markdown 版（飞书 / 企业微信 / PushPlus / WxPusher）
+  // Markdown 版
   let md = '## 📰 中文新闻 Hub\n';
   md += '**' + catLabel + '** | ' + now + '\n\n';
   if (summary) md += '### 🤖 AI 摘要\n' + summary + '\n\n';
@@ -738,9 +791,22 @@ var currentCategory = 'general';
 var sidebarOpen = window.innerWidth > 900;
 
 var CATEGORIES = {
-  general:'综合新闻', world:'国际', business:'财经',
-  technology:'科技', entertainment:'娱乐', sports:'体育',
-  science:'科学', health:'健康'
+  general:       {label:'综合新闻',   icon:'📰', group:'综合'},
+  world:         {label:'国际',       icon:'🌍', group:'时事'},
+  china:         {label:'两岸三地',   icon:'🇨🇳', group:'时事'},
+  politics:      {label:'政治',       icon:'🏛️', group:'时事'},
+  society:       {label:'社会',       icon:'👥', group:'时事'},
+  business:      {label:'财经',       icon:'💹', group:'财经'},
+  markets:       {label:'股市',       icon:'📈', group:'财经'},
+  property:      {label:'房产',       icon:'🏠', group:'财经'},
+  technology:    {label:'科技',       icon:'💻', group:'科技'},
+  ai:            {label:'AI 人工智能',icon:'🤖', group:'科技'},
+  health:        {label:'健康医疗',   icon:'❤️', group:'生活'},
+  entertainment: {label:'娱乐',       icon:'🎬', group:'生活'},
+  sports:        {label:'体育',       icon:'⚽', group:'生活'},
+  science:       {label:'科学',       icon:'🔬', group:'生活'},
+  culture:       {label:'文化艺术',   icon:'🎨', group:'生活'},
+  travel:        {label:'旅游',       icon:'✈️', group:'生活'},
 };
 
 var SOURCE_LIST = {
@@ -778,7 +844,11 @@ async function loadConfig() {
 }
 
 function applyConfigToUI() {
-  document.getElementById('push-cat-select').value = config.pushCategory || config.category || 'general';
+  var pushCats = config.pushCategories || (config.pushCategory ? [config.pushCategory] : ['general']);
+  // 回填推送分类 chip 选中状态
+  document.querySelectorAll('.pcat-chip').forEach(function(el) {
+    el.classList.toggle('pcat-active', pushCats.includes(el.dataset.cat));
+  });
   document.getElementById('kw-input').value = config.keywords || '';
   document.getElementById('exkw-input').value = config.excludeKeywords || '';
   document.getElementById('max-input').value = config.maxItems || 20;
@@ -827,11 +897,21 @@ function selectCategory(cat) {
   loadNews();
 }
 
+// chip 点击切换
+window.togglePushCat = function(el) {
+  el.classList.toggle('pcat-active');
+  // 至少保留一个选中
+  var actives = document.querySelectorAll('.pcat-chip.pcat-active');
+  if (actives.length === 0) el.classList.add('pcat-active');
+};
+
 async function saveConfig() {
   var sources = Array.from(document.querySelectorAll('#src-grid input:checked')).map(function(el){return el.value;});
+  var pushCategories = Array.from(document.querySelectorAll('.pcat-chip.pcat-active')).map(function(el){return el.dataset.cat;});
+  if (pushCategories.length === 0) pushCategories = ['general'];
   var newConf = {
-    category: currentCategory,  // 页面浏览分类，跟随导航栏点击
-    pushCategory: document.getElementById('push-cat-select').value,  // 推送分类，独立设置
+    category: currentCategory,
+    pushCategories: pushCategories,
     keywords: document.getElementById('kw-input').value,
     excludeKeywords: document.getElementById('exkw-input').value,
     maxItems: parseInt(document.getElementById('max-input').value) || 20,
@@ -1032,15 +1112,41 @@ initTheme();
 
 function renderHTML(config, env) {
   const catOptions = Object.entries(CATEGORIES).map(function(e) {
-    return '<option value="' + e[0] + '"' + (config.category === e[0] ? ' selected' : '') + '>' + e[1] + '</option>';
+    return '<option value="' + e[0] + '"' + (config.category === e[0] ? ' selected' : '') + '>' + e[1].icon + ' ' + e[1].label + '</option>';
   }).join('');
 
-  // 推送分类下拉选项（独立于页面浏览分类）
-  const pushCat = config.pushCategory || config.category || 'general';
-  const pushCatOptions = Object.entries(CATEGORIES).map(function(e) {
-    return '<option value="' + e[0] + '"' + (pushCat === e[0] ? ' selected' : '') + '>' + e[1] + '</option>';
+  // 推送分类多选 chip HTML（服务端渲染选中状态）
+  const pushCats = config.pushCategories
+    || (config.pushCategory ? [config.pushCategory] : ['general']);
+  // 按 group 分组渲染
+  const groups = {};
+  Object.entries(CATEGORIES).forEach(([k, v]) => {
+    if (!groups[v.group]) groups[v.group] = [];
+    groups[v.group].push({ key: k, ...v });
+  });
+  const pushChips = Object.entries(groups).map(([grpName, cats]) => {
+    const chips = cats.map(c => {
+      const active = pushCats.includes(c.key) ? ' pcat-active' : '';
+      return '<span class="pcat-chip' + active + '" data-cat="' + c.key + '" onclick="togglePushCat(this)">' + c.icon + ' ' + c.label + '</span>';
+    }).join('');
+    return '<div class="pcat-group"><span class="pcat-group-label">' + grpName + '</span>' + chips + '</div>';
   }).join('');
-  // hourOptions removed - using text input now
+
+  // 导航栏：分组显示
+  const navGroups = {};
+  Object.entries(CATEGORIES).forEach(([k, v]) => {
+    if (!navGroups[v.group]) navGroups[v.group] = [];
+    navGroups[v.group].push({ key: k, ...v });
+  });
+  const navItems = Object.entries(navGroups).map(([grpName, cats]) => {
+    const items = cats.map(c =>
+      '<div class="nav-item' + (config.category === c.key ? ' active' : '') + '" data-cat="' + c.key + '" onclick="selectCategory(\'' + c.key + '\')">' +
+        '<span class="nav-icon">' + c.icon + '</span>' +
+        '<span class="nav-label">' + c.label + '</span>' +
+      '</div>'
+    ).join('');
+    return '<div class="nav-group-label">' + grpName + '</div>' + items;
+  }).join('');
 
   // 推送渠道配置状态检测（服务端渲染）
   const CHANNELS = [
@@ -1118,11 +1224,6 @@ function renderHTML(config, env) {
     );
   }).join('');
 
-  const navItems = Object.entries(CATEGORIES).map(function(e) {
-    return '<div class="nav-item' + (config.category === e[0] ? ' active' : '') + '" data-cat="' + e[0] + '" onclick="selectCategory(\'' + e[0] + '\')">' +
-      '<span class="nav-icon">' + {'general':'📰','world':'🌍','business':'💹','technology':'💻','entertainment':'🎬','sports':'⚽','science':'🔬','health':'❤️'}[e[0]] + '</span>' +
-      '<span class="nav-label">' + e[1] + '</span></div>';
-  }).join('');
 
   const css = `
 :root {
@@ -1179,6 +1280,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
 .nav-item:hover { background: var(--bg); color: var(--text); }
 .nav-item.active { background: var(--accent-light); color: var(--accent); font-weight: 600; }
 .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+.nav-group-label { font-size: 10px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .06em; padding: 10px 20px 3px; opacity: .7; }
+
+/* Push category chips */
+.pcat-wrap { display: flex; flex-direction: column; gap: 4px; }
+.pcat-group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.pcat-group-label { font-size: 10px; font-weight: 700; color: var(--text-secondary); width: 100%; padding-top: 4px; text-transform: uppercase; letter-spacing: .04em; }
+.pcat-chip { font-size: 11px; padding: 3px 8px; border-radius: 20px; border: 1px solid var(--border); background: var(--bg); color: var(--text-secondary); cursor: pointer; transition: all .15s; white-space: nowrap; user-select: none; }
+.pcat-chip:hover { border-color: var(--accent); color: var(--accent); }
+.pcat-chip.pcat-active { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+[data-theme="dark"] .pcat-chip.pcat-active { background: var(--accent); }
 
 /* Settings panel in sidebar */
 .settings-panel { padding: 8px 12px 16px; border-top: 1px solid var(--border); margin-top: auto; }
@@ -1328,8 +1439,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
     '    <div class="settings-title">⚙️ 设置</div>',
 
     '    <div class="form-group">',
-    '      <label class="form-label">推送分类 <small style="color:#94a3b8;font-weight:400">（仅影响推送内容）</small></label>',
-    '      <select class="form-control" id="push-cat-select">' + pushCatOptions + '</select>',
+    '      <label class="form-label">推送分类 <small style="color:#94a3b8;font-weight:400">（多选，仅影响推送内容）</small></label>',
+    '      <div class="pcat-wrap" id="push-cat-wrap">',
+    pushChips,
+    '      </div>',
     '    </div>',
 
     '    <div class="form-group">',
