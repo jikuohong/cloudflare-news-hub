@@ -760,8 +760,7 @@ function renderNews(area, data) {
     hdr.appendChild(ce('span', {className:'ai-badge'}, '🤖 AI 摘要'));
     card.appendChild(hdr);
     var body = ce('div', {className:'summary-body'});
-    body.innerHTML = data.summary.replace(/\n/g, '<br>');
-    card.appendChild(body);
+    body.innerHTML = data.summary.split('\n').join('<br>');
     area.appendChild(card);
   }
 
