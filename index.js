@@ -75,8 +75,7 @@ function getSourceUrl(key, config) {
     rti:          'https://www.rti.org.tw/feeds/news.xml',
     rfa:          'https://www.rfa.org/mandarin/rss2.xml',
     voachinese:   'https://www.voachinese.com/api/zepqeimovm',
-    bbc_chinese:  'https://feeds.bbci.co.uk/zhongwen/simp/rss.xml',  // 简体
-    bbc_trad:     'https://feeds.bbci.co.uk/zhongwen/trad/rss.xml',
+    bbc_chinese:  'https://feeds.bbci.co.uk/zhongwen/simp/rss.xml',
     bbc_trad:     'https://feeds.bbci.co.uk/zhongwen/trad/rss.xml',
     initium:      'https://theinitium.com/feed',
     dwnews:       'https://rss.dw.com/rdf/rss-chi-all',
@@ -116,7 +115,7 @@ export default {
     if (url.pathname === '/api/config' && request.method === 'POST') return handleSaveConfig(request, env);
     if (url.pathname === '/api/config' && request.method === 'GET')  return handleGetConfig(env);
     if (url.pathname === '/api/test'   && request.method === 'POST') return handleTestPush(env);
-    if (url.pathname === '/api/news'   && request.method === 'GET')  return handleNews(env);
+    if (url.pathname === '/api/news'   && request.method === 'GET')  return handleNews(request, env);
     return new Response(renderHTML(await getConfig(env), env), { headers: { 'Content-Type': 'text/html;charset=UTF-8' } });
   },
   async scheduled(event, env, ctx) {
@@ -324,6 +323,7 @@ async function summarizeWithAI(env, items, config) {
 // 统一的带缓存摘要获取（精确到小时，页面和推送共享）
 async function getAISummary(env, items, config) {
   if (config.aiSummary === false) return null;
+  if (!env.NEWS_CONFIG) return await summarizeWithAI(env, items, config);
   const cacheKey = 'summary_cache_' + config.category + '_' + new Date().toISOString().slice(0, 13);
   try {
     const cached = await env.NEWS_CONFIG.get(cacheKey);
@@ -339,13 +339,22 @@ async function getAISummary(env, items, config) {
 // ============================================================
 // API: 新闻 + 摘要
 // ============================================================
-async function handleNews(env) {
+async function handleNews(request, env) {
   try {
     const config = await getConfig(env);
-    const webConfig = { ...config, maxItems: 60, keywords: '', excludeKeywords: '' };
-    const items = await fetchAllNews(webConfig, env);  // 优化⑤ 传入 env
-    const summary = await getAISummary(env, items, config);  // 优化④ 统一缓存
-    return Response.json({ success: true, items, summary, category: (CATEGORIES[config.category] || {}).label || '综合新闻' });
+    const reqUrl = new URL(request.url);
+    // 支持前端通过 ?cat=xxx 切换分类，不依赖 KV 存储的默认值
+    const cat = reqUrl.searchParams.get('cat');
+    const webConfig = {
+      ...config,
+      maxItems: 60,
+      keywords: '',
+      excludeKeywords: '',
+      ...(cat && CATEGORIES[cat] ? { category: cat } : {}),
+    };
+    const items = await fetchAllNews(webConfig, env);
+    const summary = await getAISummary(env, items, webConfig);
+    return Response.json({ success: true, items, summary, category: (CATEGORIES[webConfig.category] || {}).label || '综合新闻' });
   } catch (e) { return Response.json({ success: false, message: e.message }, { status: 500 }); }
 }
 
@@ -572,7 +581,7 @@ async function pushDingtalk(env, config, payload) {
     const key = await crypto.subtle.importKey('raw', enc.encode(env.DINGTALK_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
     const sig = await crypto.subtle.sign('HMAC', key, enc.encode(strToSign));
     const b64 = btoa(String.fromCharCode(...new Uint8Array(sig)));
-    url += '&timestamp=' + timestamp + '&sign=' + encodeURIComponent(b64);
+    url += (url.includes('?') ? '&' : '?') + 'timestamp=' + timestamp + '&sign=' + encodeURIComponent(b64);
   }
   const body = {
     msgtype: 'markdown',
@@ -630,12 +639,17 @@ async function pushBark(env, config, payload) {
   const barkUrl = env.BARK_URL;
   if (!barkUrl) return { channel: 'Bark', skipped: true };
   const { plain, catLabel } = payload;
-  // Bark URL 格式: https://api.day.app/your_key/title/body
+  // 使用 POST JSON 避免 GET URL 特殊字符被截断
   const base = barkUrl.replace(/\/$/, '');
-  const title = encodeURIComponent('📰 中文新闻 Hub - ' + catLabel);
-  const body = encodeURIComponent(plain.slice(0, 1000)); // Bark 有长度限制
-  const resp = await fetch(base + '/' + title + '/' + body + '?group=新闻&icon=https://www.google.com/favicon.ico', {
-    method: 'GET',
+  const resp = await fetch(base, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title: '📰 中文新闻 Hub - ' + catLabel,
+      body: plain.slice(0, 1000),
+      group: '新闻',
+      icon: 'https://www.google.com/favicon.ico',
+    }),
   });
   const data = await resp.json();
   if (data.code !== 200) throw new Error('Bark 推送失败: ' + (data.message || JSON.stringify(data)));
@@ -688,9 +702,7 @@ async function pushWxPusher(env, config, payload) {
 
 // ── 统一推送入口（优化①⑥）──────────────────────────────────
 async function runAllPush(env, config, { isRetry = false } = {}) {
-  const payload = await buildPlainMessage(env, config);
-
-  // 优化⑥：如果是重试模式，只推上次失败的渠道
+  // 优化⑥：重试模式，先读取失败渠道，若无则提前返回，避免无谓构建 payload
   let failedChannels = [];
   if (isRetry) {
     try {
@@ -699,6 +711,8 @@ async function runAllPush(env, config, { isRetry = false } = {}) {
     } catch {}
     if (failedChannels.length === 0) return { count: 0, summary: ['无待重试渠道'] };
   }
+
+  const payload = await buildPlainMessage(env, config);
 
   const allPushers = [
     { name: 'Telegram',   fn: pushTelegram },
@@ -939,7 +953,7 @@ async function loadNews() {
   var area = document.getElementById('news-area');
   area.innerHTML = '<div class="loading"><div class="spinner"></div><p>正在抓取新闻...</p></div>';
   try {
-    var r = await fetch('/api/news');
+    var r = await fetch('/api/news?cat=' + encodeURIComponent(currentCategory));
     var d = await r.json();
     if (!d.success) { area.innerHTML = '<div class="error-msg">获取失败：' + d.message + '</div>'; return; }
     renderNews(d);
@@ -1069,7 +1083,6 @@ function lunarDate(date) {
   var offset = Math.floor((date - baseDate) / 86400000);
   // 简化：用平均农历月29.5306天估算
   var totalDays = offset;
-  var lunarYear = 1900;
   // 粗算年
   var approxYear = Math.floor(totalDays / 365.25) + 1900;
   // 干支
@@ -1490,7 +1503,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
     '      <div class="collapse-bd">',
 
     '        <div class="form-group">',
-    '          <label class="form-label">推送条数</label>',
+    '          <label class="form-label">推送分类 <small style="color:#94a3b8;font-weight:400">可多选</small></label>',
+    '          <div class="pcat-wrap">' + pushChips + '</div>',
+    '        </div>',
+
+    '        <div class="form-group">',
     '          <input class="form-control" type="number" id="max-input" value="' + config.maxItems + '" min="1" max="50">',
     '        </div>',
 
