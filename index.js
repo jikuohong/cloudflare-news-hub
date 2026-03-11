@@ -124,18 +124,40 @@ async function handleSaveConfig(request, env) {
 // ============================================================
 // 新闻获取
 // ============================================================
-async function fetchFromSource(sourceKey, config) {
+// 新闻获取（优化⑤：RSS 源 KV 缓存 8 分钟）
+// ============================================================
+async function fetchFromSource(sourceKey, config, env) {
   const src = NEWS_SOURCES[sourceKey];
   if (!src) return [];
   try {
     const url = getSourceUrl(sourceKey, config);
     if (!url) return [];
-    const resp = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NewsBot/1.0)' },
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!resp.ok) return [];
-    const xml = await resp.text();
+
+    let xml = null;
+
+    // 尝试从 KV 缓存读取 RSS 原始内容
+    if (env && env.NEWS_CONFIG) {
+      const cacheKey = 'rss_cache_' + sourceKey;
+      try {
+        const cached = await env.NEWS_CONFIG.get(cacheKey);
+        if (cached) xml = cached;
+      } catch {}
+    }
+
+    // 缓存未命中则实际请求
+    if (!xml) {
+      const resp = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NewsBot/1.0)' },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!resp.ok) return [];
+      xml = await resp.text();
+      // 写入 KV，TTL 8 分钟
+      if (env && env.NEWS_CONFIG && xml) {
+        try { await env.NEWS_CONFIG.put('rss_cache_' + sourceKey, xml, { expirationTtl: 480 }); } catch {}
+      }
+    }
+
     return parseRss(xml, src.label, src.flag, config, config._maxAgeDays || 7);
   } catch { return []; }
 }
@@ -183,12 +205,44 @@ function parseRss(xml, sourceName, sourceFlag, config, maxAgeDays) {
   return items;
 }
 
-async function fetchAllNews(config) {
+// ============================================================
+// 标题相似度去重（优化②）
+// 将标题分解为字符 bigram 集合，计算 Jaccard 相似度
+// 同一事件不同来源标题相似度通常 > 0.5
+// ============================================================
+function titleTokens(title) {
+  // 去除标点空格，取连续2字符bigram
+  const clean = title.replace(/[\s\u3000\uff0c\u3001\u3002\uff01\uff1f\u300a\u300b「」『』【】〔〕《》""''·—…、，。！？：；]/g, '');
+  const set = new Set();
+  for (let i = 0; i < clean.length - 1; i++) set.add(clean.slice(i, i + 2));
+  return set;
+}
+
+function jaccardSimilarity(setA, setB) {
+  if (setA.size === 0 && setB.size === 0) return 1;
+  let intersection = 0;
+  for (const t of setA) { if (setB.has(t)) intersection++; }
+  return intersection / (setA.size + setB.size - intersection);
+}
+
+function isSimilarTitle(title, acceptedTokenSets, threshold = 0.55) {
+  const tokens = titleTokens(title);
+  for (const set of acceptedTokenSets) {
+    if (jaccardSimilarity(tokens, set) >= threshold) return true;
+  }
+  return false;
+}
+
+async function fetchAllNews(config, env) {
   const sources = (config.sources || DEFAULT_CONFIG.sources).filter(s => NEWS_SOURCES[s]);
-  const results = await Promise.allSettled(sources.map(s => fetchFromSource(s, config)));
+
+  // 优化⑤：RSS 源缓存，每个源缓存 8 分钟，减少对外请求
+  const results = await Promise.allSettled(sources.map(s => fetchFromSource(s, config, env)));
   const buckets = results.filter(r => r.status === 'fulfilled').map(r => r.value);
+
   const allItems = [];
-  const seen = new Set();
+  const acceptedTokenSets = []; // 已收录标题的 bigram 集合列表（用于相似度比对）
+
   let added = true;
   while (added && allItems.length < config.maxItems) {
     added = false;
@@ -196,15 +250,16 @@ async function fetchAllNews(config) {
       if (allItems.length >= config.maxItems) break;
       while (bucket.length > 0) {
         const item = bucket.shift();
-        const key = item.title.slice(0, 20);
-        if (seen.has(key)) continue;
-        seen.add(key);
+        // 优化②：用 Jaccard 相似度替代简单前缀匹配
+        if (isSimilarTitle(item.title, acceptedTokenSets)) continue;
+        acceptedTokenSets.push(titleTokens(item.title));
         allItems.push(item);
         added = true;
         break;
       }
     }
   }
+
   // 按发布时间降序排列，无时间的排最后
   allItems.sort(function(a, b) {
     var ta = a.pubDate ? new Date(a.pubDate).getTime() : 0;
@@ -229,7 +284,7 @@ function escapeTg(str) {
 }
 
 // ============================================================
-// AI 摘要
+// AI 摘要（优化④：统一缓存，页面和推送共用同一份）
 // ============================================================
 async function summarizeWithAI(env, items, config) {
   if (!env.AI) return null;
@@ -245,6 +300,21 @@ async function summarizeWithAI(env, items, config) {
   } catch { return null; }
 }
 
+// 统一的带缓存摘要获取（精确到小时，页面和推送共享）
+async function getAISummary(env, items, config) {
+  if (config.aiSummary === false) return null;
+  const cacheKey = 'summary_cache_' + config.category + '_' + new Date().toISOString().slice(0, 13);
+  try {
+    const cached = await env.NEWS_CONFIG.get(cacheKey);
+    if (cached) return cached;
+    const summary = await summarizeWithAI(env, items, config);
+    if (summary) await env.NEWS_CONFIG.put(cacheKey, summary, { expirationTtl: 86400 });
+    return summary;
+  } catch {
+    return await summarizeWithAI(env, items, config);
+  }
+}
+
 // ============================================================
 // API: 新闻 + 摘要
 // ============================================================
@@ -252,28 +322,8 @@ async function handleNews(env) {
   try {
     const config = await getConfig(env);
     const webConfig = { ...config, maxItems: 60, keywords: '', excludeKeywords: '' };
-    const items = await fetchAllNews(webConfig);
-
-    // AI摘要缓存：同一小时内只生成一次，节省 Workers AI 额度
-    let summary = null;
-    if (config.aiSummary !== false) {
-      const cacheKey = 'summary_cache_' + config.category + '_' + new Date().toISOString().slice(0, 13); // 精确到小时
-      try {
-        const cached = await env.NEWS_CONFIG.get(cacheKey);
-        if (cached) {
-          summary = cached;
-        } else {
-          summary = await summarizeWithAI(env, items, config);
-          if (summary) {
-            await env.NEWS_CONFIG.put(cacheKey, summary, { expirationTtl: 86400 }); // 保留24小时后自动删除，key按小时区分
-          }
-        }
-      } catch (e) {
-        // 缓存读写失败则直接生成
-        summary = await summarizeWithAI(env, items, config);
-      }
-    }
-
+    const items = await fetchAllNews(webConfig, env);  // 优化⑤ 传入 env
+    const summary = await getAISummary(env, items, config);  // 优化④ 统一缓存
     return Response.json({ success: true, items, summary, category: CATEGORIES[config.category] || '综合新闻' });
   } catch (e) { return Response.json({ success: false, message: e.message }, { status: 500 }); }
 }
@@ -289,22 +339,57 @@ async function handleNews(env) {
 //   WECOM_WEBHOOK       企业微信机器人 Webhook URL
 //   PUSHPLUS_TOKEN      PushPlus 用户 Token
 //   BARK_URL            Bark 推送 URL，例如 https://api.day.app/your_key
+//   WXPUSHER_APP_TOKEN  WxPusher appToken
+//   WXPUSHER_UIDS       接收用户 UID，逗号分隔
+//   WXPUSHER_TOPIC_IDS  主题 ID，逗号分隔（可选）
 // ============================================================
 
-// ── 构建纯文本消息（通用） ──────────────────────────────────
+// ── 优化①：跨批次推送去重 ──────────────────────────────────
+// 将已推送标题的 bigram 集合持久化到 KV，TTL 24小时
+// 下次推送前先过滤掉已推过的内容
+
+const PUSHED_CACHE_KEY = 'pushed_titles_cache';
+
+async function loadPushedTitles(env) {
+  try {
+    const raw = await env.NEWS_CONFIG.get(PUSHED_CACHE_KEY);
+    return raw ? JSON.parse(raw) : [];  // 返回已推标题数组
+  } catch { return []; }
+}
+
+async function savePushedTitles(env, newTitles, existingTitles) {
+  try {
+    // 合并新旧，保留最近 500 条，避免 KV value 过大
+    const merged = [...existingTitles, ...newTitles].slice(-500);
+    await env.NEWS_CONFIG.put(PUSHED_CACHE_KEY, JSON.stringify(merged), { expirationTtl: 86400 });
+  } catch {}
+}
+
+function filterAlreadyPushed(items, pushedTitles) {
+  // 把历史已推标题全部转为 bigram 集合
+  const pushedSets = pushedTitles.map(t => titleTokens(t));
+  return items.filter(item => !isSimilarTitle(item.title, pushedSets));
+}
+
+// ── 构建消息 payload（含去重）────────────────────────────────
 async function buildPlainMessage(env, config) {
   const pushConfig = { ...config, _maxAgeDays: 1 };
-  const items = await fetchAllNews(pushConfig);
-  if (items.length === 0) throw new Error('没有获取到新闻');
+  const allItems = await fetchAllNews(pushConfig, env);  // 优化⑤
+  if (allItems.length === 0) throw new Error('没有获取到新闻');
+
+  // 优化①：过滤已推送过的内容
+  const pushedTitles = await loadPushedTitles(env);
+  const items = filterAlreadyPushed(allItems, pushedTitles);
+
+  if (items.length === 0) throw new Error('没有新内容（本批次新闻已全部推送过）');
+
   const catLabel = CATEGORIES[config.category] || '综合新闻';
   const now = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
 
-  let summary = null;
-  if (config.aiSummary !== false) {
-    summary = await summarizeWithAI(env, items, config);
-  }
+  // 优化④：使用统一缓存获取 AI 摘要
+  const summary = await getAISummary(env, items, config);
 
-  // 纯文本版（用于钉钉 text / 企业微信 text / Bark）
+  // 纯文本版（Bark / 钉钉 text）
   let plain = '📰 中文新闻 Hub\n';
   plain += '🗂 ' + catLabel + ' | 🕐 ' + now + '\n';
   if (summary) plain += '\n━━━ 🤖 AI 摘要 ━━━\n' + summary + '\n';
@@ -314,7 +399,7 @@ async function buildPlainMessage(env, config) {
   });
   plain += '\n共 ' + items.length + ' 条';
 
-  // Markdown 版（用于飞书 / 企业微信 markdown / PushPlus）
+  // Markdown 版（飞书 / 企业微信 / PushPlus / WxPusher）
   let md = '## 📰 中文新闻 Hub\n';
   md += '**' + catLabel + '** | ' + now + '\n\n';
   if (summary) md += '### 🤖 AI 摘要\n' + summary + '\n\n';
@@ -325,7 +410,7 @@ async function buildPlainMessage(env, config) {
   });
   md += '\n> 共 ' + items.length + ' 条';
 
-  return { items, plain, md, catLabel, now, summary };
+  return { items, plain, md, catLabel, now, summary, pushedTitles };
 }
 
 // ── Telegram ────────────────────────────────────────────────
@@ -340,6 +425,35 @@ async function sendToTelegram(env, message) {
   const data = await resp.json();
   if (!data.ok) throw new Error('TG 推送失败: ' + data.description);
   return data;
+}
+
+// 优化③：将长消息按 4000 字符拆分，避免 Telegram 4096 字符上限报错
+async function sendToTelegramSafe(env, message) {
+  const LIMIT = 4000;
+  if (message.length <= LIMIT) {
+    return sendToTelegram(env, message);
+  }
+  // 按换行拆分，贪心合并成不超过 LIMIT 的分段
+  const lines = message.split('\n');
+  const chunks = [];
+  let current = '';
+  for (const line of lines) {
+    const next = current ? current + '\n' + line : line;
+    if (next.length > LIMIT) {
+      if (current) chunks.push(current);
+      current = line.length > LIMIT ? line.slice(0, LIMIT) : line;
+    } else {
+      current = next;
+    }
+  }
+  if (current) chunks.push(current);
+
+  for (let i = 0; i < chunks.length; i++) {
+    const part = chunks.length > 1 ? chunks[i] + '\n\n<i>（' + (i+1) + '/' + chunks.length + '）</i>' : chunks[i];
+    await sendToTelegram(env, part);
+    // 多段之间稍作等待，避免触发 Telegram 速率限制
+    if (i < chunks.length - 1) await new Promise(r => setTimeout(r, 500));
+  }
 }
 
 async function pushTelegram(env, config, payload) {
@@ -363,7 +477,7 @@ async function pushTelegram(env, config, payload) {
     msg += '\n';
   }
   msg += '━━━━━━━━━━━━━━━━━━━━\n共 ' + items.length + ' 条';
-  await sendToTelegram(env, msg);
+  await sendToTelegramSafe(env, msg);  // 优化③ 分段发送
   return { channel: 'Telegram', ok: true };
 }
 
@@ -517,28 +631,63 @@ async function pushWxPusher(env, config, payload) {
   return { channel: 'WxPusher', ok: true };
 }
 
-// ── 统一推送入口 ─────────────────────────────────────────────
-async function runAllPush(env, config) {
+// ── 统一推送入口（优化①⑥）──────────────────────────────────
+async function runAllPush(env, config, { isRetry = false } = {}) {
   const payload = await buildPlainMessage(env, config);
 
-  const results = await Promise.allSettled([
-    pushTelegram(env, config, payload),
-    pushFeishu(env, config, payload),
-    pushDingtalk(env, config, payload),
-    pushWecom(env, config, payload),
-    pushPushPlus(env, config, payload),
-    pushBark(env, config, payload),
-    pushWxPusher(env, config, payload),
-  ]);
+  // 优化⑥：如果是重试模式，只推上次失败的渠道
+  let failedChannels = [];
+  if (isRetry) {
+    try {
+      const raw = await env.NEWS_CONFIG.get('push_failed_channels');
+      failedChannels = raw ? JSON.parse(raw) : [];
+    } catch {}
+    if (failedChannels.length === 0) return { count: 0, summary: ['无待重试渠道'] };
+  }
 
+  const allPushers = [
+    { name: 'Telegram',   fn: pushTelegram },
+    { name: '飞书',        fn: pushFeishu },
+    { name: '钉钉',        fn: pushDingtalk },
+    { name: '企业微信',    fn: pushWecom },
+    { name: 'PushPlus',   fn: pushPushPlus },
+    { name: 'Bark',        fn: pushBark },
+    { name: 'WxPusher',   fn: pushWxPusher },
+  ];
+
+  // 重试模式只跑上次失败的渠道
+  const pushers = isRetry
+    ? allPushers.filter(p => failedChannels.includes(p.name))
+    : allPushers;
+
+  const results = await Promise.allSettled(
+    pushers.map(p => p.fn(env, config, payload))
+  );
+
+  const newFailedChannels = [];
   const summary = results.map((r, i) => {
     if (r.status === 'fulfilled') {
       const v = r.value;
       if (v.skipped) return v.channel + ':未配置';
       return v.channel + ':✅';
     }
-    return r.reason?.message || '推送异常';
+    // 记录失败渠道，供下次重试
+    newFailedChannels.push(pushers[i].name);
+    return pushers[i].name + ':❌(' + (r.reason?.message || '未知错误') + ')';
   });
+
+  // 优化⑥：保存失败渠道列表（TTL 2小时，超时自动清除）
+  if (newFailedChannels.length > 0) {
+    try { await env.NEWS_CONFIG.put('push_failed_channels', JSON.stringify(newFailedChannels), { expirationTtl: 7200 }); } catch {}
+  } else {
+    try { await env.NEWS_CONFIG.delete('push_failed_channels'); } catch {}
+  }
+
+  // 优化①：推送成功后保存已推标题（不管是否全部渠道成功，只要有一个成功就记录）
+  const anySuccess = results.some(r => r.status === 'fulfilled' && !r.value?.skipped);
+  if (anySuccess) {
+    await savePushedTitles(env, payload.items.map(i => i.title), payload.pushedTitles);
+  }
 
   return { count: payload.items.length, summary };
 }
@@ -550,11 +699,22 @@ async function runNewsPush(env) {
   const hour = parseInt(now.toLocaleString('en-US', { timeZone: 'Asia/Shanghai', hour: 'numeric', hour12: false }));
   const pushHours = String(config.pushHours || config.pushHour || '8')
     .split(/[,，\s]+/).map(h => parseInt(h.trim())).filter(h => !isNaN(h));
-  if (!pushHours.includes(hour)) return;
+
   const today = now.toISOString().slice(0, 10);
   const runKey = 'lastRun_' + today + '_' + hour;
+
+  // 优化⑥：检查是否有上次失败需要重试
+  let failedRaw = null;
+  try { failedRaw = await env.NEWS_CONFIG.get('push_failed_channels'); } catch {}
+  if (failedRaw) {
+    // 有失败渠道，先尝试重试（不受整点限制）
+    await runAllPush(env, config, { isRetry: true });
+  }
+
+  if (!pushHours.includes(hour)) return;
   const lastRun = await env.NEWS_CONFIG.get(runKey);
   if (lastRun) return;
+
   await runAllPush(env, config);
   await env.NEWS_CONFIG.put(runKey, '1');
 }
