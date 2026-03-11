@@ -1,5 +1,5 @@
 // ============================================================
-// Cloudflare News Hub - 单文件 Worker
+// Cloudflare News Hub - 单文件 Worker (含 AI 摘要)
 // ============================================================
 
 const DEFAULT_CONFIG = {
@@ -11,6 +11,7 @@ const DEFAULT_CONFIG = {
   maxItems: 10,
   pushHour: '8',
   enabled: true,
+  aiSummary: true,
   sources: ['google', 'reuters', 'bbc', 'xinhua', 'ap'],
 };
 
@@ -40,13 +41,10 @@ const LANGUAGES = {
 // ============================================================
 const NEWS_SOURCES = {
   google: {
-    label: 'Google News',
-    flag: '🔍',
+    label: 'Google News', flag: '🔍',
     getUrl: (config) => {
       const hl = config.language, gl = config.region;
-      if (config.keywords) {
-        return `https://news.google.com/rss/search?q=${encodeURIComponent(config.keywords)}&hl=${hl}&gl=${gl}&ceid=${gl}:${hl}`;
-      }
+      if (config.keywords) return `https://news.google.com/rss/search?q=${encodeURIComponent(config.keywords)}&hl=${hl}&gl=${gl}&ceid=${gl}:${hl}`;
       const catMap = { world:'WORLD', business:'BUSINESS', technology:'TECHNOLOGY', entertainment:'ENTERTAINMENT', sports:'SPORTS', science:'SCIENCE', health:'HEALTH' };
       const cat = catMap[config.category];
       if (cat) return `https://news.google.com/rss/headlines/section/topic/${cat}?hl=${hl}&gl=${gl}&ceid=${gl}:${hl}`;
@@ -54,64 +52,51 @@ const NEWS_SOURCES = {
     },
   },
   reuters: {
-    label: '路透社 Reuters',
-    flag: '📡',
+    label: '路透社 Reuters', flag: '📡',
     getUrl: (config) => {
       const catMap = { world:'world', business:'business', technology:'technology', science:'science', health:'health', sports:'sports', entertainment:'lifestyle' };
-      const cat = catMap[config.category] || 'world';
-      return `https://feeds.reuters.com/reuters/${cat}News`;
+      return `https://feeds.reuters.com/reuters/${catMap[config.category] || 'world'}News`;
     },
   },
   bbc: {
-    label: 'BBC News',
-    flag: '🇬🇧',
+    label: 'BBC News', flag: '🇬🇧',
     getUrl: (config) => {
       const catMap = { world:'world', business:'business', technology:'technology', science:'science_and_environment', health:'health', sports:'sport', entertainment:'entertainment_and_arts' };
-      const cat = catMap[config.category] || 'world';
-      return `http://feeds.bbci.co.uk/news/${cat}/rss.xml`;
+      return `http://feeds.bbci.co.uk/news/${catMap[config.category] || 'world'}/rss.xml`;
     },
   },
   xinhua: {
-    label: '新华社',
-    flag: '🇨🇳',
+    label: '新华社', flag: '🇨🇳',
     getUrl: () => 'https://feeds.feedburner.com/NewHuaNet-EnglishNews',
   },
   ap: {
-    label: '美联社 AP',
-    flag: '🗞',
+    label: '美联社 AP', flag: '🗞',
     getUrl: (config) => {
       const catMap = { world:'intl', business:'business', technology:'technology', science:'science', health:'health', sports:'sports', entertainment:'entertainment' };
-      const cat = catMap[config.category] || 'intl';
-      return `https://rsshub.app/apnews/topics/${cat}`;
+      return `https://rsshub.app/apnews/topics/${catMap[config.category] || 'intl'}`;
     },
   },
   bloomberg: {
-    label: '彭博社 Bloomberg',
-    flag: '💹',
+    label: '彭博社 Bloomberg', flag: '💹',
     getUrl: () => 'https://feeds.bloomberg.com/markets/news.rss',
   },
   ft: {
-    label: '金融时报 FT',
-    flag: '🏦',
+    label: '金融时报 FT', flag: '🏦',
     getUrl: () => 'https://www.ft.com/rss/home',
   },
   guardian: {
-    label: '卫报 The Guardian',
-    flag: '🌐',
+    label: '卫报 The Guardian', flag: '🌐',
     getUrl: (config) => {
       const catMap = { world:'world', business:'business', technology:'technology', science:'science', health:'society', sports:'sport', entertainment:'culture' };
-      const cat = catMap[config.category] || 'world';
-      return `https://www.theguardian.com/${cat}/rss`;
+      return `https://www.theguardian.com/${catMap[config.category] || 'world'}/rss`;
     },
   },
   nhk: {
-    label: 'NHK World',
-    flag: '🇯🇵',
+    label: 'NHK World', flag: '🇯🇵',
     getUrl: () => 'https://www3.nhk.or.jp/rss/news/cat0.xml',
   },
-  aljazeeera: {
-    label: '半岛电视台 Al Jazeera',
-    flag: '🌍',
+  aljazeera: {
+    label: '半岛电视台 Al Jazeera', flag: '🌍',
     getUrl: () => 'https://www.aljazeera.com/xml/rss/all.xml',
   },
 };
@@ -177,21 +162,16 @@ function parseRss(xml, sourceName, sourceFlag, config) {
     const block = match[1];
     const title = decodeHtml(extract(block, 'title'));
     const link  = extract(block, 'link') || extract(block, 'guid');
-    const pub   = extract(block, 'pubDate');
     if (!title || title.length < 5) continue;
-
-    // 关键词过滤
     if (config.keywords) {
       const kws = config.keywords.split(/[,，\s]+/).filter(Boolean);
       if (!kws.some(k => title.includes(k))) continue;
     }
-    // 排除词过滤
     if (config.excludeKeywords) {
       const exkws = config.excludeKeywords.split(/[,，\s]+/).filter(Boolean);
       if (exkws.some(k => title.includes(k))) continue;
     }
-
-    items.push({ title, link, pub, source: sourceName, flag: sourceFlag });
+    items.push({ title, link, source: sourceName, flag: sourceFlag });
   }
   return items;
 }
@@ -199,12 +179,9 @@ function parseRss(xml, sourceName, sourceFlag, config) {
 async function fetchAllNews(config) {
   const sources = (config.sources || DEFAULT_CONFIG.sources).filter(s => NEWS_SOURCES[s]);
   const perSource = Math.max(2, Math.ceil(config.maxItems / sources.length));
-
   const results = await Promise.allSettled(sources.map(s => fetchFromSource(s, config)));
-
   const allItems = [];
   const seen = new Set();
-
   results.forEach(r => {
     if (r.status !== 'fulfilled') return;
     let count = 0;
@@ -217,7 +194,6 @@ async function fetchAllNews(config) {
       count++;
     }
   });
-
   return allItems.slice(0, config.maxItems);
 }
 
@@ -230,6 +206,35 @@ function decodeHtml(str) {
 }
 
 // ============================================================
+// Workers AI 摘要
+// ============================================================
+async function summarizeWithAI(env, items, config) {
+  if (!env.AI) return null;
+  try {
+    const catLabel = CATEGORIES[config.category] || '综合';
+    const newsList = items.map((item, i) => `${i+1}. [${item.source}] ${item.title}`).join('\n');
+    const prompt = `你是一位专业的新闻编辑助手。以下是来自多家权威媒体的今日${catLabel}新闻标题，请完成以下任务：
+
+1. 用中文提炼出 3-5 个最重要的新闻要点，每点 1-2 句话，语言简洁专业
+2. 最后用一句话给出今日整体趋势或值得关注的信号
+
+新闻列表：
+${newsList}
+
+请直接输出摘要内容，不要有多余的前缀说明。`;
+
+    const response = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 600,
+    });
+    return response?.choices?.[0]?.message?.content?.trim() || null;
+  } catch (e) {
+    console.error('AI 摘要失败:', e.message);
+    return null;
+  }
+}
+
+// ============================================================
 // Telegram 推送
 // ============================================================
 async function sendToTelegram(env, message) {
@@ -238,26 +243,37 @@ async function sendToTelegram(env, message) {
   const resp = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'HTML', disable_web_page_preview: false }),
+    body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'HTML', disable_web_page_preview: true }),
   });
   const data = await resp.json();
   if (!data.ok) throw new Error(`TG 推送失败: ${data.description}`);
   return data;
 }
 
-function formatMessage(items, config) {
+async function formatMessage(items, config, env) {
   const catLabel = CATEGORIES[config.category] || '综合新闻';
   const now = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+
   let msg = `📰 <b>Cloudflare News Hub</b>\n`;
   msg += `🗂 ${catLabel} | 🕐 ${now}\n`;
-  msg += `━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+  // AI 摘要部分
+  if (config.aiSummary !== false) {
+    const summary = await summarizeWithAI(env, items, config);
+    if (summary) {
+      msg += `\n━━━━━ 🤖 AI 今日摘要 ━━━━━\n\n`;
+      msg += `${summary}\n`;
+    }
+  }
+
+  // 原文链接列表
+  msg += `\n━━━━━ 📎 原文链接 ━━━━━\n\n`;
 
   // 按来源分组
   const grouped = {};
   items.forEach(item => {
-    const key = item.source;
-    if (!grouped[key]) grouped[key] = { flag: item.flag, items: [] };
-    grouped[key].items.push(item);
+    if (!grouped[item.source]) grouped[item.source] = { flag: item.flag, items: [] };
+    grouped[item.source].items.push(item);
   });
 
   let idx = 1;
@@ -288,7 +304,8 @@ async function runNewsPush(env) {
   if (lastRun === today) return;
   const items = await fetchAllNews(config);
   if (items.length === 0) return;
-  await sendToTelegram(env, formatMessage(items, config));
+  const message = await formatMessage(items, config, env);
+  await sendToTelegram(env, message);
   await env.NEWS_CONFIG.put('lastRun', today);
 }
 
@@ -297,7 +314,8 @@ async function handleTestPush(env) {
     const config = await getConfig(env);
     const items = await fetchAllNews(config);
     if (items.length === 0) return Response.json({ success: false, message: '没有获取到新闻，请检查配置' });
-    await sendToTelegram(env, formatMessage(items, config));
+    const message = await formatMessage(items, config, env);
+    await sendToTelegram(env, message);
     return Response.json({ success: true, message: `推送成功！共发送 ${items.length} 条新闻` });
   } catch (e) { return Response.json({ success: false, message: e.message }, { status: 500 }); }
 }
@@ -306,7 +324,9 @@ async function handlePreview(env) {
   try {
     const config = await getConfig(env);
     const items = await fetchAllNews(config);
-    return Response.json({ success: true, items });
+    let summary = null;
+    if (config.aiSummary !== false) summary = await summarizeWithAI(env, items, config);
+    return Response.json({ success: true, items, summary });
   } catch (e) { return Response.json({ success: false, message: e.message }, { status: 500 }); }
 }
 
@@ -322,7 +342,6 @@ function renderHTML(config) {
     `<option value="${v}" ${config.category===v?'selected':''}>${l}</option>`).join('');
   const hourOptions = Array.from({length:24},(_,i) =>
     `<option value="${i}" ${String(config.pushHour)===String(i)?'selected':''}>${String(i).padStart(2,'0')}:00</option>`).join('');
-
   const sourcesChecked = config.sources || DEFAULT_CONFIG.sources;
   const sourceCheckboxes = Object.entries(NEWS_SOURCES).map(([key, src]) =>
     `<label class="src-label">
@@ -366,10 +385,11 @@ function renderHTML(config) {
   .alert{padding:12px 16px;border-radius:8px;font-size:14px;margin-top:16px;display:none}
   .alert-success{background:#064e3b;color:#6ee7b7;border:1px solid #10b981}
   .alert-error{background:#450a0a;color:#fca5a5;border:1px solid #ef4444}
+  .ai-summary{background:#1e1b4b;border:1px solid #4338ca;border-radius:8px;padding:16px;margin-bottom:16px;font-size:14px;line-height:1.8;color:#c7d2fe}
+  .ai-label{font-size:12px;color:#818cf8;margin-bottom:8px;font-weight:600}
   .preview-item{padding:12px;background:#0f172a;border-radius:8px;margin-bottom:8px;border-left:3px solid #3b82f6}
   .preview-item a{color:#60a5fa;text-decoration:none;font-size:14px;line-height:1.5}
-  .preview-item .meta{font-size:12px;color:#64748b;margin-top:4px}
-  .src-tag{display:inline-block;padding:2px 8px;border-radius:4px;background:#1e3a5f;color:#60a5fa;font-size:11px;margin-right:6px}
+  .src-tag{display:inline-block;padding:2px 8px;border-radius:4px;background:#1e3a5f;color:#60a5fa;font-size:11px;margin-right:6px;margin-bottom:4px}
   @media(max-width:600px){.form-row{grid-template-columns:1fr}}
 </style>
 </head>
@@ -378,7 +398,7 @@ function renderHTML(config) {
   <span style="font-size:32px">📰</span>
   <div>
     <h1>Cloudflare News Hub</h1>
-    <p style="color:#93c5fd;font-size:13px;margin-top:4px">多源聚合 · Telegram 推送</p>
+    <p style="color:#93c5fd;font-size:13px;margin-top:4px">多源聚合 · AI 摘要 · Telegram 推送</p>
   </div>
 </div>
 <div class="container">
@@ -410,9 +430,14 @@ function renderHTML(config) {
     <h2>📨 推送设置</h2>
     <div class="form-row">
       <div class="form-group"><label>每日推送时间（北京时间）</label><select id="pushHour">${hourOptions}</select></div>
-      <div class="form-group"><label>推送状态</label>
+      <div class="form-group">
+        <label>推送状态</label>
         <div class="toggle"><input type="checkbox" id="enabled" ${config.enabled?'checked':''}><label for="enabled" id="enabledLabel">${config.enabled?'已启用':'已停用'}</label></div>
       </div>
+    </div>
+    <div class="form-group">
+      <label>AI 摘要</label>
+      <div class="toggle"><input type="checkbox" id="aiSummary" ${config.aiSummary!==false?'checked':''}><label for="aiSummary" id="aiSummaryLabel">${config.aiSummary!==false?'已启用':'已停用'}</label></div>
     </div>
   </div>
 
@@ -436,10 +461,13 @@ function renderHTML(config) {
   document.getElementById('enabled').addEventListener('change',function(){
     document.getElementById('enabledLabel').textContent=this.checked?'已启用':'已停用';
   });
+  document.getElementById('aiSummary').addEventListener('change',function(){
+    document.getElementById('aiSummaryLabel').textContent=this.checked?'已启用':'已停用';
+  });
   function showAlert(msg,type){
     const el=document.getElementById('alert');
     el.className='alert alert-'+type;el.textContent=msg;el.style.display='block';
-    setTimeout(()=>el.style.display='none',5000);
+    setTimeout(()=>el.style.display='none',6000);
   }
   function getSelectedSources(){
     return [...document.querySelectorAll('input[name=sources]:checked')].map(el=>el.value);
@@ -454,6 +482,7 @@ function renderHTML(config) {
       maxItems:parseInt(document.getElementById('maxItems').value),
       pushHour:document.getElementById('pushHour').value,
       enabled:document.getElementById('enabled').checked,
+      aiSummary:document.getElementById('aiSummary').checked,
       sources:getSelectedSources(),
     };
     const resp=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(config)});
@@ -461,7 +490,7 @@ function renderHTML(config) {
     showAlert(data.message,data.success?'success':'error');
   }
   async function testPush(){
-    showAlert('正在推送，请稍候...','success');
+    showAlert('正在生成 AI 摘要并推送，请稍候（约10-20秒）...','success');
     const resp=await fetch('/api/test',{method:'POST'});
     const data=await resp.json();
     showAlert(data.message,data.success?'success':'error');
@@ -470,17 +499,22 @@ function renderHTML(config) {
     const card=document.getElementById('previewCard');
     const list=document.getElementById('previewList');
     card.style.display='block';
-    list.innerHTML='<p style="color:#94a3b8">加载中...</p>';
+    list.innerHTML='<p style="color:#94a3b8">🤖 正在抓取新闻并生成 AI 摘要，请稍候...</p>';
     const resp=await fetch('/api/preview');
     const data=await resp.json();
     if(!data.success){list.innerHTML='<p style="color:#f87171">'+data.message+'</p>';return;}
     if(data.items.length===0){list.innerHTML='<p style="color:#94a3b8">没有获取到新闻</p>';return;}
-    list.innerHTML=data.items.map((item,i)=>
+    let html='';
+    if(data.summary){
+      html+='<div class="ai-summary"><div class="ai-label">🤖 AI 今日摘要</div>'+data.summary.replace(/\n/g,'<br>')+'</div>';
+    }
+    html+=data.items.map((item,i)=>
       '<div class="preview-item">'+
       '<span class="src-tag">'+item.flag+' '+item.source+'</span>'+
       '<a href="'+item.link+'" target="_blank">'+(i+1)+'. '+item.title+'</a>'+
       '</div>'
     ).join('');
+    list.innerHTML=html;
   }
 </script>
 </body>
