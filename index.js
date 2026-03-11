@@ -7,7 +7,7 @@ const DEFAULT_CONFIG = {
   keywords: '',
   excludeKeywords: '',
   maxItems: 20,
-  pushHour: '8',
+  pushHours: '8,12,16,20',
   enabled: true,
   aiSummary: true,
   sources: ['rfa', 'voachinese', 'bbc_chinese', 'bbc_trad', 'hk01', 'mingpao', 'orientaldaily', 'appledaily_tw', 'udn', 'cna', 'rti', 'initium', 'dwnews', 'googlezh'],
@@ -294,13 +294,18 @@ async function runNewsPush(env) {
   const config = await getConfig(env);
   if (!config.enabled) return;
   const now = new Date();
-  const hour = now.toLocaleString('en-US', { timeZone: 'Asia/Shanghai', hour: 'numeric', hour12: false });
-  if (String(config.pushHour) !== String(hour)) return;
-  const lastRun = await env.NEWS_CONFIG.get('lastRun');
+  const hour = parseInt(now.toLocaleString('en-US', { timeZone: 'Asia/Shanghai', hour: 'numeric', hour12: false }));
+  // 支持多个推送时间，逗号分隔
+  const pushHours = String(config.pushHours || config.pushHour || '8')
+    .split(/[,，\s]+/).map(h => parseInt(h.trim())).filter(h => !isNaN(h));
+  if (!pushHours.includes(hour)) return;
+  // 用 小时 作为当天推送标记，避免同一小时重复推送
   const today = now.toISOString().slice(0, 10);
-  if (lastRun === today) return;
+  const runKey = 'lastRun_' + today + '_' + hour;
+  const lastRun = await env.NEWS_CONFIG.get(runKey);
+  if (lastRun) return;
   await buildTgMessage(env, config);
-  await env.NEWS_CONFIG.put('lastRun', today);
+  await env.NEWS_CONFIG.put(runKey, '1');
 }
 
 async function handleTestPush(env) {
@@ -355,7 +360,7 @@ function applyConfigToUI() {
   document.getElementById('kw-input').value = config.keywords || '';
   document.getElementById('exkw-input').value = config.excludeKeywords || '';
   document.getElementById('max-input').value = config.maxItems || 20;
-  document.getElementById('hour-select').value = config.pushHour || '8';
+  document.getElementById('hour-input').value = config.pushHours || config.pushHour || '8,12,16,20';
   document.getElementById('enabled-toggle').checked = config.enabled !== false;
   document.getElementById('ai-toggle').checked = config.aiSummary !== false;
   currentCategory = config.category || 'general';
@@ -407,7 +412,7 @@ async function saveConfig() {
     keywords: document.getElementById('kw-input').value,
     excludeKeywords: document.getElementById('exkw-input').value,
     maxItems: parseInt(document.getElementById('max-input').value) || 20,
-    pushHour: document.getElementById('hour-select').value,
+    pushHours: document.getElementById('hour-input').value,
     enabled: document.getElementById('enabled-toggle').checked,
     aiSummary: document.getElementById('ai-toggle').checked,
     sources: sources,
@@ -577,9 +582,7 @@ function renderHTML(config) {
   const catOptions = Object.entries(CATEGORIES).map(function(e) {
     return '<option value="' + e[0] + '"' + (config.category === e[0] ? ' selected' : '') + '>' + e[1] + '</option>';
   }).join('');
-  const hourOptions = Array.from({length:24}, function(_, i) {
-    return '<option value="' + i + '"' + (String(config.pushHour) === String(i) ? ' selected' : '') + '>' + String(i).padStart(2,'0') + ':00</option>';
-  }).join('');
+  // hourOptions removed - using text input now
 
   const navItems = Object.entries(CATEGORIES).map(function(e) {
     return '<div class="nav-item' + (config.category === e[0] ? ' active' : '') + '" data-cat="' + e[0] + '" onclick="selectCategory(\'' + e[0] + '\')">' +
@@ -775,8 +778,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
     '    </div>',
 
     '    <div class="form-group">',
-    '      <label class="form-label">每日推送时间（北京时间）</label>',
-    '      <select class="form-control" id="hour-select">' + hourOptions + '</select>',
+    '      <label class="form-label">推送时间（北京时间，多个用逗号分隔）</label>',
+    '      <input class="form-control" type="text" id="hour-input" placeholder="例如: 8,12,16,20" value="' + (config.pushHours || config.pushHour || '8,12,16,20') + '">',
     '    </div>',
 
     '    <div class="toggle-row">',
