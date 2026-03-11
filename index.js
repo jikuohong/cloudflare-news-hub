@@ -36,9 +36,6 @@ const LANGUAGES = {
   'de-DE': 'Deutsch',
 };
 
-// ============================================================
-// 新闻源（仅保留稳定可用的 RSS 地址）
-// ============================================================
 const NEWS_SOURCES = {
   google: {
     label: 'Google News', flag: '🔍',
@@ -131,7 +128,7 @@ async function handleSaveConfig(request, env) {
 }
 
 // ============================================================
-// 新闻获取 —— 修复：先抓足够多，再统一截取 maxItems 条
+// 新闻获取
 // ============================================================
 async function fetchFromSource(sourceKey, config) {
   const source = NEWS_SOURCES[sourceKey];
@@ -172,14 +169,10 @@ function parseRss(xml, sourceName, sourceFlag, config) {
 
 async function fetchAllNews(config) {
   const sources = (config.sources || DEFAULT_CONFIG.sources).filter(s => NEWS_SOURCES[s]);
-  // 每个源最多取 maxItems 条，保证有足够候选
   const results = await Promise.allSettled(sources.map(s => fetchFromSource(s, config)));
+  const buckets = results.filter(r => r.status === 'fulfilled').map(r => r.value);
   const allItems = [];
   const seen = new Set();
-  // 轮询每个源，依次各取一条，确保来源均衡且总数达标
-  const buckets = results
-    .filter(r => r.status === 'fulfilled')
-    .map(r => r.value);
   let added = true;
   while (added && allItems.length < config.maxItems) {
     added = false;
@@ -207,62 +200,68 @@ function decodeHtml(str) {
   return str.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'");
 }
 
-// 判断标题是否已经是中文（含中文字符比例 > 30%）
 function isChinese(text) {
   const cjk = (text.match(/[\u4e00-\u9fff]/g) || []).length;
-  return cjk / text.length > 0.3;
+  return cjk / text.length > 0.25;
 }
 
 // ============================================================
-// Workers AI：批量翻译英文标题为中文
+// AI 翻译：一次调用翻译所有标题，用 JSON 格式保证解析可靠
 // ============================================================
 async function translateTitles(env, items) {
   if (!env.AI) return items;
-  // 只翻译非中文标题
-  const toTranslate = items.filter(item => !isChinese(item.title));
-  if (toTranslate.length === 0) return items;
+
+  const needTranslate = items
+    .map((item, i) => ({ i, title: item.title }))
+    .filter(x => !isChinese(x.title));
+
+  if (needTranslate.length === 0) return items;
 
   try {
-    const numbered = toTranslate.map((item, i) => (i + 1) + '. ' + item.title).join('\n');
-    const prompt = '请将以下新闻标题逐条翻译为简体中文，保持编号格式，只输出翻译结果，不要任何解释：\n\n' + numbered;
+    const inputJson = JSON.stringify(needTranslate.map(x => ({ id: x.i, text: x.title })));
+    const prompt = '将以下 JSON 数组中每条新闻标题翻译为简体中文，直接返回相同结构的 JSON 数组，字段名不变，只把 text 字段内容改为中文译文，不要输出任何其他内容：\n' + inputJson;
+
     const response = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 1000,
+      max_tokens: 1500,
     });
-    const raw = response?.choices?.[0]?.message?.content?.trim() || '';
-    const lines = raw.split('\n').filter(l => l.trim());
-    // 把翻译结果映射回对应条目
-    const translMap = {};
-    lines.forEach(line => {
-      const m = line.match(/^(\d+)[.、．]\s*(.+)/);
-      if (m) translMap[parseInt(m[1])] = m[2].trim();
-    });
-    toTranslate.forEach((item, i) => {
-      if (translMap[i + 1]) item.titleZh = translMap[i + 1];
+
+    const raw = (response?.choices?.[0]?.message?.content || '').trim();
+    // 提取 JSON 数组
+    const jsonMatch = raw.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) throw new Error('no json array found');
+    const parsed = JSON.parse(jsonMatch[0]);
+
+    // 将翻译结果写回 items
+    parsed.forEach(entry => {
+      if (typeof entry.id === 'number' && entry.text) {
+        items[entry.id].title = entry.text;
+      }
     });
   } catch (e) {
     console.error('翻译失败:', e.message);
+    // 翻译失败不影响推送，保留原标题
   }
+
   return items;
 }
 
 // ============================================================
-// Workers AI 摘要
+// AI 摘要
 // ============================================================
 async function summarizeWithAI(env, items, config) {
   if (!env.AI) return null;
   try {
     const catLabel = CATEGORIES[config.category] || '综合';
-    // 用中文标题做摘要（若有翻译则用翻译版）
-    const newsList = items.map((item, i) => (i + 1) + '. ' + (item.titleZh || item.title)).join('\n');
-    const prompt = '你是一位专业的新闻编辑助手。以下是今日' + catLabel + '新闻标题，请：\n1. 用中文提炼 3-5 个最重要的新闻要点，每点 1-2 句话，简洁专业\n2. 最后一句给出今日整体趋势或值得关注的信号\n\n新闻列表：\n' + newsList + '\n\n直接输出摘要，不要前缀说明。';
+    const newsList = items.map((item, i) => (i + 1) + '. ' + item.title).join('\n');
+    const prompt = '你是专业新闻编辑。以下是今日' + catLabel + '新闻标题（均为中文），请：\n1. 提炼 3-5 个最重要要点，每点 1-2 句，简洁专业\n2. 最后一句给出今日趋势或值得关注的信号\n\n' + newsList + '\n\n直接输出摘要，不要前缀。';
     const response = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 600,
     });
     return response?.choices?.[0]?.message?.content?.trim() || null;
   } catch (e) {
-    console.error('AI 摘要失败:', e.message);
+    console.error('摘要失败:', e.message);
     return null;
   }
 }
@@ -283,44 +282,47 @@ async function sendToTelegram(env, message) {
   return data;
 }
 
-async function formatMessage(items, config, env) {
+async function buildAndSend(env, config) {
+  let items = await fetchAllNews(config);
+  if (items.length === 0) throw new Error('没有获取到新闻');
+
+  // 翻译所有非中文标题
+  items = await translateTitles(env, items);
+
   const catLabel = CATEGORIES[config.category] || '综合新闻';
   const now = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
-
-  // 先翻译所有非中文标题
-  items = await translateTitles(env, items);
 
   let msg = '📰 <b>Cloudflare News Hub</b>\n';
   msg += '🗂 ' + catLabel + ' | 🕐 ' + now + '\n';
 
-  // AI 摘要
   if (config.aiSummary !== false) {
     const summary = await summarizeWithAI(env, items, config);
     if (summary) {
-      msg += '\n━━━━━ 🤖 AI 今日摘要 ━━━━━\n\n';
-      msg += summary + '\n';
+      msg += '\n━━━━━ 🤖 AI 今日摘要 ━━━━━\n\n' + summary + '\n';
     }
   }
 
-  // 原文链接列表，标题显示中文
   msg += '\n━━━━━ 📎 原文链接 ━━━━━\n\n';
+
   const grouped = {};
   items.forEach(item => {
     if (!grouped[item.source]) grouped[item.source] = { flag: item.flag, items: [] };
     grouped[item.source].items.push(item);
   });
+
   let idx = 1;
   for (const [src, group] of Object.entries(grouped)) {
     msg += group.flag + ' <b>' + src + '</b>\n';
     group.items.forEach(item => {
-      const displayTitle = item.titleZh || item.title;
-      msg += idx + '. <a href="' + item.link + '">' + displayTitle + '</a>\n';
+      msg += idx + '. <a href="' + item.link + '">' + item.title + '</a>\n';
       idx++;
     });
     msg += '\n';
   }
   msg += '━━━━━━━━━━━━━━━━━━━━\n共 ' + items.length + ' 条';
-  return msg;
+
+  await sendToTelegram(env, msg);
+  return items.length;
 }
 
 // ============================================================
@@ -335,38 +337,26 @@ async function runNewsPush(env) {
   const lastRun = await env.NEWS_CONFIG.get('lastRun');
   const today = now.toISOString().slice(0, 10);
   if (lastRun === today) return;
-  const items = await fetchAllNews(config);
-  if (items.length === 0) return;
-  const message = await formatMessage(items, config, env);
-  await sendToTelegram(env, message);
+  await buildAndSend(env, config);
   await env.NEWS_CONFIG.put('lastRun', today);
 }
 
 async function handleTestPush(env) {
   try {
     const config = await getConfig(env);
-    const items = await fetchAllNews(config);
-    if (items.length === 0) return Response.json({ success: false, message: '没有获取到新闻，请检查配置' });
-    const message = await formatMessage(items, config, env);
-    await sendToTelegram(env, message);
-    return Response.json({ success: true, message: '推送成功！共发送 ' + items.length + ' 条新闻' });
+    const count = await buildAndSend(env, config);
+    return Response.json({ success: true, message: '推送成功！共发送 ' + count + ' 条新闻（含中文翻译）' });
   } catch (e) { return Response.json({ success: false, message: e.message }, { status: 500 }); }
 }
 
 async function handlePreview(env) {
   try {
     const config = await getConfig(env);
-    const items = await fetchAllNews(config);
-    // 预览也做翻译
-    const translatedItems = await translateTitles(env, items);
+    let items = await fetchAllNews(config);
+    items = await translateTitles(env, items);
     let summary = null;
-    if (config.aiSummary !== false) summary = await summarizeWithAI(env, translatedItems, config);
-    // 预览返回带中文标题的数据
-    const displayItems = translatedItems.map(item => ({
-      ...item,
-      title: item.titleZh || item.title,
-    }));
-    return Response.json({ success: true, items: displayItems, summary });
+    if (config.aiSummary !== false) summary = await summarizeWithAI(env, items, config);
+    return Response.json({ success: true, items, summary });
   } catch (e) { return Response.json({ success: false, message: e.message }, { status: 500 }); }
 }
 
@@ -386,7 +376,7 @@ function buildClientScript() {
   lines.push("  el.className = 'alert alert-' + type;");
   lines.push("  el.textContent = msg;");
   lines.push("  el.style.display = 'block';");
-  lines.push("  setTimeout(function(){ el.style.display = 'none'; }, 6000);");
+  lines.push("  setTimeout(function(){ el.style.display = 'none'; }, 8000);");
   lines.push("}");
   lines.push("function getSelectedSources() {");
   lines.push("  return Array.from(document.querySelectorAll('input[name=sources]:checked')).map(function(el){ return el.value; });");
@@ -409,7 +399,7 @@ function buildClientScript() {
   lines.push("  showAlert(data.message, data.success ? 'success' : 'error');");
   lines.push("};");
   lines.push("window.testPush = async function() {");
-  lines.push("  showAlert('\u6b63\u5728\u7ffb\u8bd1\u5e76\u751f\u6210\u6458\u8981\uff0c\u8bf7\u7a0d\u5019\uff0820-30\u79d2\uff09...', 'success');");
+  lines.push("  showAlert('\u6b63\u5728\u7ffb\u8bd1\u5e76\u63a8\u9001\uff0c\u8bf7\u7a0d\u5019\uff0820-40\u79d2\uff09...', 'success');");
   lines.push("  var resp = await fetch('/api/test', { method: 'POST' });");
   lines.push("  var data = await resp.json();");
   lines.push("  showAlert(data.message, data.success ? 'success' : 'error');");
@@ -418,7 +408,7 @@ function buildClientScript() {
   lines.push("  var card = document.getElementById('previewCard');");
   lines.push("  var list = document.getElementById('previewList');");
   lines.push("  card.style.display = 'block';");
-  lines.push("  list.innerHTML = '<p style=\"color:#94a3b8\">\u6b63\u5728\u6293\u53d6\u5e76\u7ffb\u8bd1\u65b0\u95fb\uff0c\u8bf7\u7a0d\u5019...</p>';");
+  lines.push("  list.innerHTML = '<p style=\"color:#94a3b8\">\u6b63\u5728\u6293\u53d6\u5e76\u7ffb\u8bd1\uff0c\u8bf7\u7a0d\u5019...</p>';");
   lines.push("  var resp = await fetch('/api/preview');");
   lines.push("  var data = await resp.json();");
   lines.push("  if (!data.success) { list.innerHTML = '<p style=\"color:#f87171\">' + data.message + '</p>'; return; }");
