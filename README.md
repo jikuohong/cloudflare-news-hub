@@ -1,199 +1,353 @@
-# 📰 Cloudflare News Hub
+# 📰 中文新闻 Hub
 
-自动从多家权威媒体抓取新闻，经 **Workers AI 智能摘要**后推送到 Telegram。
+> 运行在 **Cloudflare Workers** 上的零服务器中文新闻聚合与多渠道推送系统
 
-部署在 Cloudflare Workers 上，完全免费，每天定时自动推送。
+<div align="center">
 
----
+![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green)
+![Media Sources](https://img.shields.io/badge/媒体来源-23家-blue)
+![Push Channels](https://img.shields.io/badge/推送渠道-7个-purple)
+![AI Powered](https://img.shields.io/badge/AI-Llama_3.1-orange)
 
-## ✨ 功能特性
+**[部署步骤](#-部署步骤) · [推送渠道](#-推送渠道配置) · [环境变量](#-环境变量一览) · [常见问题](#-常见问题)**
 
-- **10 家权威媒体**：Google News、路透社、BBC、新华社、美联社、彭博社、金融时报、卫报、NHK、半岛电视台
-- **🤖 AI 智能摘要**：Workers AI（Llama 3.1）自动提炼今日新闻要点
-- 多语言支持（中文、英文、日文、韩文等）
-- 按分类抓取（综合、科技、财经、体育等）
-- 关键词过滤 / 排除词过滤
-- 每日定时推送到 Telegram
-- 网页设置面板，无需改代码
-- GitHub 推送后自动部署
+</div>
 
 ---
 
-## 📨 推送格式
+## ✨ 特性
 
-```
-📰 Cloudflare News Hub
-🗂 综合新闻 | 🕐 2026/3/11 08:00:00
-
-━━━━━ 🤖 AI 今日摘要 ━━━━━
-
-1. 全球科技巨头加速布局 AI 芯片...
-2. 美联储暗示年内降息预期收窄...
-3. ...
-
-━━━━━ 📎 原文链接 ━━━━━
-
-🔍 Google News
-1. 标题...
-
-📡 路透社 Reuters
-2. 标题...
-```
+| | 特性 | 说明 |
+|---|---|---|
+| ⚡ | **零服务器** | 完全运行在 Cloudflare Workers，无需购买服务器、无需维护 |
+| 🆓 | **完全免费** | Workers 免费额度每天 10 万次请求，完全够用 |
+| 🌐 | **23 家媒体** | 港台海外主流中文媒体，RSS 实时聚合 |
+| 📬 | **7 个推送渠道** | Telegram / 飞书 / 钉钉 / 企业微信 / PushPlus / Bark / WxPusher |
+| 🤖 | **AI 摘要** | Workers AI（Llama 3.1）每日要点提炼，按小时缓存 |
+| 🔁 | **智能去重** | Jaccard 相似度算法 + 跨批次历史去重，24 小时内每条新闻最多推一次 |
+| 🔄 | **失败重试** | 推送失败渠道自动记录，下次触发时补发 |
+| 🌙 | **深色模式** | 自动跟随系统，支持手动切换 |
 
 ---
 
 ## 🚀 部署步骤
 
-### 第一步：创建 GitHub 仓库
+### 前置准备
 
-1. 登录 GitHub，新建公开仓库，命名为 `cloudflare-news-hub`
-2. 上传以下文件到根目录：
-   - `index.js`
-   - `wrangler.toml`
-   - `.github/workflows/deploy.yml`
+1. 注册 [Cloudflare](https://cloudflare.com) 账号（免费）
+2. 在 Workers & Pages 创建一个新 **Worker**
+3. 创建一个 **KV Namespace**，绑定到 Worker，变量名设为 `NEWS_CONFIG`
+4. （可选）开启 **Workers AI** 绑定，变量名 `AI`，启用 AI 摘要功能
 
----
+### 部署代码
 
-### 第二步：Cloudflare 控制台配置
+1. 将 `index.js` 全部内容粘贴到 Worker 编辑器
+2. 点击右上角 **Deploy** 部署
+3. 访问 Worker URL，看到新闻界面即部署成功 🎉
 
-#### 2.1 创建 KV 命名空间
+### 配置定时推送
 
-1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com)
-2. **Workers 和 Pages** → **KV** → **创建命名空间**
-3. 名称填 `NEWS_CONFIG`，创建后复制 **命名空间 ID**
-
-#### 2.2 修改 wrangler.toml
-
-将 `id` 替换为刚才复制的 KV ID：
-
-```toml
-name = "cloudflare-news-hub"
-main = "index.js"
-compatibility_date = "2024-03-01"
-
-[ai]
-binding = "AI"
-
-[[kv_namespaces]]
-binding = "NEWS_CONFIG"
-id = "你的KV命名空间ID"    # ← 改这里
-
-[triggers]
-crons = ["0 * * * *"]
-```
-
-#### 2.3 创建 Cloudflare API Token
-
-1. 右上角头像 → **我的个人资料** → **API 令牌**
-2. **创建令牌** → 使用 **Edit Cloudflare Workers** 模板
-3. 确认包含以下权限：
-   - `Account - Workers Scripts - Edit`
-   - `Account - Workers KV Storage - Edit`
-   - `User - User Details - Read`
-4. 创建后复制 Token（只显示一次）
-
-#### 2.4 配置 Telegram Bot
-
-1. 打开 Telegram，搜索 `@BotFather`
-2. 发送 `/newbot`，创建 Bot，获取 **Bot Token**（格式：`123456:ABC-DEF...`）
-3. 获取你的 Chat ID：搜索 `@userinfobot`，发送任意消息即可获取
-
-#### 2.5 添加 Worker 环境变量
-
-**Workers 和 Pages** → 找到 Worker → **设置** → **变量和机密**，添加：
-
-| 变量名 | 类型 | 值 |
-|--------|------|----|
-| `TG_TOKEN` | 加密变量 | Telegram Bot Token |
-| `TG_CHAT_ID` | 加密变量 | 你的 Telegram Chat ID |
-
----
-
-### 第三步：GitHub 配置
-
-#### 3.1 添加 GitHub Secret
-
-仓库 → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**：
-
-| Secret 名称 | 值 |
-|------------|-----|
-| `CLOUDFLARE_API_TOKEN` | 第 2.3 步创建的 Token |
-
-#### 3.2 触发自动部署
-
-将修改好的 `wrangler.toml`（填入正确 KV ID）push 到 `main` 分支，GitHub Actions 自动部署。
-
----
-
-### 第四步：使用设置面板
-
-部署成功后访问 Worker 地址（如 `https://cloudflare-news-hub.你的账号.workers.dev`）：
-
-1. 勾选需要的**新闻来源**（最多 10 家）
-2. 选择语言、地区、分类
-3. 设置关键词过滤（可选）
-4. 设置每日推送时间（北京时间）
-5. 开启/关闭 **AI 摘要**
-6. 点击 **保存配置**
-7. 点击 **立即测试推送** 验证（约 10~20 秒，AI 生成摘要需要时间）
-
----
-
-## 📁 文件结构
+前往 Worker → **Triggers → Cron Triggers**，添加：
 
 ```
-cloudflare-news-hub/
-├── index.js                    # Worker 主文件（全部逻辑）
-├── wrangler.toml               # Cloudflare 配置
-└── .github/
-    └── workflows/
-        └── deploy.yml          # GitHub Actions 自动部署
+0 * * * *
 ```
+
+> 每小时整点触发一次，系统根据你在侧边栏设置的推送时间决定是否实际推送，同一小时内不会重复推送。
 
 ---
 
-## 🌐 支持的新闻来源
+## 📬 推送渠道配置
 
-| 来源 | 特点 |
+所有变量均在 **Cloudflare Worker → Settings → Variables** 中配置，配置完成后刷新页面，侧边栏会实时显示 `✅ 已配置` / `未配置` 状态。
+
+### ✈️ Telegram
+
+| 变量名 | 说明 |
+|--------|------|
+| `TG_TOKEN` | BotFather 创建的 Bot Token |
+| `TG_CHAT_ID` | 接收消息的 Chat ID（支持群组，ID 以 `-` 开头） |
+
+<details>
+<summary>获取方式</summary>
+
+1. 向 [@BotFather](https://t.me/botfather) 发送 `/newbot`，获得 `TG_TOKEN`
+2. 向 Bot 发一条消息，然后访问：
+   ```
+   https://api.telegram.org/bot<TOKEN>/getUpdates
+   ```
+3. 从返回 JSON 中找到 `chat.id`，填入 `TG_CHAT_ID`
+
+> 💡 消息超过 4096 字符时自动分段发送，段间等待 500ms 避免触发限流。
+
+</details>
+
+---
+
+### 🪶 飞书
+
+| 变量名 | 说明 |
+|--------|------|
+| `FEISHU_WEBHOOK` | 自定义机器人 Webhook URL |
+
+<details>
+<summary>获取方式</summary>
+
+飞书群 → 右上角「设置」→「机器人」→「添加机器人」→「自定义机器人」→ 复制 Webhook 地址
+
+消息以**卡片（Card）格式**发送，支持 Markdown。
+
+</details>
+
+---
+
+### 📎 钉钉
+
+| 变量名 | 是否必填 | 说明 |
+|--------|----------|------|
+| `DINGTALK_WEBHOOK` | ✅ 必填 | 自定义机器人 Webhook URL |
+| `DINGTALK_SECRET` | 可选 | 加签密钥（启用加签安全设置时填写） |
+
+<details>
+<summary>获取方式</summary>
+
+钉钉群 → 「智能群助手」→「添加机器人」→「自定义」→ 安全设置选「加签」→ 复制密钥和 Webhook URL
+
+> ⚠️ Webhook URL 中必须包含 `access_token` 参数。加签密钥使用 HMAC-SHA256，系统自动拼接 `timestamp` 和 `sign`。
+
+</details>
+
+---
+
+### 💼 企业微信
+
+| 变量名 | 说明 |
+|--------|------|
+| `WECOM_WEBHOOK` | 群机器人 Webhook URL |
+
+<details>
+<summary>获取方式</summary>
+
+企业微信群 → 右键群名称 → 「添加群机器人」→「创建新的机器人」→ 复制 Webhook 地址
+
+消息以 **Markdown 格式**发送。
+
+</details>
+
+---
+
+### ➕ PushPlus
+
+| 变量名 | 说明 |
+|--------|------|
+| `PUSHPLUS_TOKEN` | 用户 Token |
+
+前往 [pushplus.plus](https://www.pushplus.plus) 注册获取 Token，消息推送至微信公众号。
+
+---
+
+### 🔔 Bark（iOS）
+
+| 变量名 | 说明 |
+|--------|------|
+| `BARK_URL` | 完整推送地址，如 `https://api.day.app/your_key` |
+
+App Store 下载 [Bark](https://apps.apple.com/app/bark-customed-notifications/id1403753865)，打开 App 复制推送地址。支持自托管 Bark 服务器。
+
+> 消息使用 POST JSON 方式发送，避免 URL 特殊字符截断问题。
+
+---
+
+### 💬 WxPusher
+
+| 变量名 | 是否必填 | 说明 |
+|--------|----------|------|
+| `WXPUSHER_APP_TOKEN` | ✅ 必填 | 应用 appToken |
+| `WXPUSHER_UIDS` | 二选一 | 接收用户 UID，逗号分隔，如 `UID_xxx,UID_yyy` |
+| `WXPUSHER_TOPIC_IDS` | 二选一 | 主题 ID，逗号分隔 |
+
+> ⚠️ **注意：** 微信官方已限制模板消息，通过微信公众号接收需下载 WxPusher APP。若需微信推送，推荐改用 **PushPlus**。
+
+---
+
+## 🗺️ 环境变量一览
+
+| 变量名 | 渠道 | 必填 |
+|--------|------|------|
+| `TG_TOKEN` | Telegram | ✅ |
+| `TG_CHAT_ID` | Telegram | ✅ |
+| `FEISHU_WEBHOOK` | 飞书 | ✅ |
+| `DINGTALK_WEBHOOK` | 钉钉 | ✅ |
+| `DINGTALK_SECRET` | 钉钉（加签） | 可选 |
+| `WECOM_WEBHOOK` | 企业微信 | ✅ |
+| `PUSHPLUS_TOKEN` | PushPlus | ✅ |
+| `BARK_URL` | Bark | ✅ |
+| `WXPUSHER_APP_TOKEN` | WxPusher | ✅ |
+| `WXPUSHER_UIDS` | WxPusher | 二选一 |
+| `WXPUSHER_TOPIC_IDS` | WxPusher | 二选一 |
+
+> 未配置的渠道自动跳过，已配置渠道**全部并发推送**，互不影响。
+
+---
+
+## 📡 新闻来源
+
+共 23 家，可在侧边栏「📡 新闻来源」中按需勾选。
+
+| 地区 | 媒体 |
 |------|------|
-| 🔍 Google News | 多语言聚合，支持分类和关键词 |
-| 📡 路透社 Reuters | 全球突发新闻权威 |
-| 🇬🇧 BBC News | 英国权威媒体 |
-| 🇨🇳 新华社 | 中国官方媒体 |
-| 🗞 美联社 AP | 美国权威通讯社 |
-| 💹 彭博社 Bloomberg | 财经专业媒体 |
-| 🏦 金融时报 FT | 国际财经权威 |
-| 🌐 卫报 The Guardian | 英国大报，深度报道 |
-| 🇯🇵 NHK World | 日本国家广播 |
-| 🌍 半岛电视台 Al Jazeera | 中东视角国际新闻 |
+| 🇭🇰 香港 | 香港01 · 明报 · 东方日报 · 星岛日报 · 信报 |
+| 🇹🇼 台湾 | 自由时报 · 联合新闻网 · 中央社 · 中央广播电台 · 风传媒 · 关键评论网 · ETtoday · 三立新闻 |
+| 🌏 海外 | 自由亚洲电台（RFA）· 美国之音中文（VOA）· BBC中文（简/繁）· 端传媒 · 德国之声中文 · 多维新闻 |
+| 🇰🇷🇸🇬 海外 | 朝鲜日报中文 · 联合早报 |
+| 🔍 聚合 | Google 新闻（支持按分类/关键词定制） |
 
 ---
 
-## 💰 免费额度说明
+## 🗂️ 新闻分类
 
-| 服务 | 免费额度 | 本项目消耗 |
-|------|---------|-----------|
-| Workers 请求 | 10万次/天 | 每天 24 次 ✅ |
-| Workers AI | 10,000 Neurons/天 | 每次推送约 500 ✅ |
-| KV 读写 | 10万次/天 | 每天不足 100 次 ✅ |
+侧边栏左侧可切换**页面浏览分类**，推送设置中可**多选推送分类**。
 
-每天推送 1~4 次完全免费，无需担心费用。
+| 分组 | 分类 |
+|------|------|
+| 综合 | 📰 综合新闻 |
+| 时事 | 🌍 国际 · 🇨🇳 两岸三地 · 🏛️ 政治 · 👥 社会 |
+| 财经 | 💹 财经 · 📈 股市 · 🏠 房产 |
+| 科技 | 💻 科技 · 🤖 AI 人工智能 |
+| 生活 | ❤️ 健康医疗 · 🎬 娱乐 · ⚽ 体育 · 🔬 科学 · 🎨 文化艺术 · ✈️ 旅游 |
+
+---
+
+## 🔧 核心优化说明
+
+<details>
+<summary><b>① Jaccard 标题相似度去重（同批次）</b></summary>
+
+将标题拆解为字符 bigram（连续 2 字符），计算两个标题集合的 Jaccard 系数。相似度 ≥ **0.55** 视为同一事件，同批次内自动过滤冗余报道。
+
+**示例：**
+```
+❌ 台湾总统宣布新经济政策，将加大科技投入   （联合报）
+✅ 赖清德今日宣布科技经济政策，扩大投资       （中央社）→ 保留
+
+Jaccard 相似度 = 0.62 > 0.55，自动去重
+```
+
+</details>
+
+<details>
+<summary><b>② 跨批次历史去重</b></summary>
+
+每次推送成功后，将本批标题存入 KV（TTL 24 小时，最多保留 500 条）。下次推送前先与历史记录做相似度比对，**只推真正新增的内容**。
+
+</details>
+
+<details>
+<summary><b>③ Telegram 自动分段</b></summary>
+
+Telegram 单消息上限 4096 字符。系统自动按换行切分为多段（每段 ≤ 4000 字符），段间等待 500ms 避免触发速率限制，每段末尾标注「（1/N）」。
+
+</details>
+
+<details>
+<summary><b>④ AI 摘要统一缓存</b></summary>
+
+页面访问和定时推送共用同一套 KV 缓存（Key 精确到小时）。同一小时内无论哪个先触发，均复用同一份摘要，**Workers AI 每小时最多调用一次**。
+
+</details>
+
+<details>
+<summary><b>⑤ RSS 源 KV 缓存（8 分钟）</b></summary>
+
+每个 RSS 源缓存 8 分钟（`rss_cache_<源名>`，TTL 480 秒）。缓存命中时直接读取，大幅降低对外请求数和页面加载时间。
+
+</details>
+
+<details>
+<summary><b>⑥ 推送失败自动重试</b></summary>
+
+推送失败的渠道写入 KV（`push_failed_channels`，TTL 2 小时）。下一个 Cron 触发时先检查失败列表，仅对失败渠道补发，成功后自动清除记录。
+
+</details>
+
+---
+
+## 🗄️ KV 存储键说明
+
+| Key | 用途 | TTL |
+|-----|------|-----|
+| `config` | 用户配置（分类、来源、推送时间等） | 永久 |
+| `pushed_titles_cache` | 已推标题历史（跨批次去重） | 24 小时 |
+| `rss_cache_<source>` | RSS 源原始内容缓存 | 8 分钟 |
+| `summary_cache_<cat>_<hour>` | AI 摘要缓存（按分类+小时） | 24 小时 |
+| `lastRun_<date>_<hour>` | 当天当小时是否已推标记 | 24 小时 |
+| `push_failed_channels` | 上次推送失败的渠道列表 | 2 小时 |
 
 ---
 
 ## ❓ 常见问题
 
-**Q: AI 摘要是中文的吗？**
-是的，Prompt 指定了用中文输出，无论新闻来源是什么语言。
+<details>
+<summary><b>侧边栏显示「未配置」，但我已经填了变量？</b></summary>
 
-**Q: 测试推送很慢？**
-正常，AI 生成摘要需要 10~20 秒。定时推送在后台执行，不影响使用。
+环境变量修改后需要重新 **Deploy** Worker，或等待 Cloudflare 自动刷新后再访问页面。
 
-**Q: 可以推送到群组吗？**
-可以，将 Bot 加入群组，`TG_CHAT_ID` 填群组 ID（以 `-` 开头的负数）。
+</details>
 
-**Q: 推送时间不准确？**
-Worker 每小时唤醒一次，以北京时间判断，误差在 1 小时以内。
+<details>
+<summary><b>点击「立即推送」报错「没有新内容」？</b></summary>
 
-**Q: 某个媒体抓取失败怎么办？**
-多源并发抓取，单个源失败不影响其他源，会自动跳过。
+说明 24 小时内已推过的新闻占满了当前抓取结果。可以：
+- 在侧边栏勾选更多新闻来源
+- 等几小时后重试
+- 在 Cloudflare KV 控制台手动删除 `pushed_titles_cache` 键重置去重记录
+
+</details>
+
+<details>
+<summary><b>AI 摘要没有出现？</b></summary>
+
+请确认：
+1. Worker 已绑定 Workers AI（变量名 `AI`）
+2. 侧边栏「AI 摘要」开关已开启
+3. 当前账号有 Workers AI 免费额度
+
+</details>
+
+<details>
+<summary><b>Telegram 收到了好几条消息？</b></summary>
+
+这是正常的**自动分段**行为。新闻条目多时消息超过 4000 字符，系统自动拆分多段发送。可在推送设置中减少「推送条数」来控制消息长度。
+
+</details>
+
+<details>
+<summary><b>钉钉推送失败报签名错误？</b></summary>
+
+检查 `DINGTALK_SECRET` 是否正确，且 Webhook URL 中已包含 `access_token` 参数。加签计算使用 HMAC-SHA256，系统自动拼接 `timestamp` 和 `sign` 参数。
+
+</details>
+
+<details>
+<summary><b>如何只推特定关键词的新闻？</b></summary>
+
+在侧边栏「⚙️ 推送设置」中填写**包含关键词**（逗号分隔），推送时只保留标题包含关键词的新闻。同时支持**排除关键词**过滤不想看的内容。
+
+</details>
+
+---
+
+## 📄 License
+
+MIT © 2025 中文新闻 Hub
+
+---
+
+<div align="center">
+
+**Powered by [Cloudflare Workers](https://workers.cloudflare.com) · [Workers AI](https://developers.cloudflare.com/workers-ai) · [Workers KV](https://developers.cloudflare.com/kv)**
+
+如果这个项目对你有帮助，欢迎 ⭐ Star 支持一下！
+
+</div>
