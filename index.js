@@ -1,5 +1,5 @@
 // ============================================================
-// Cloudflare News Hub - 单文件 Worker (含 AI 摘要)
+// Cloudflare News Hub - 单文件 Worker (含 AI 摘要 + 中文翻译)
 // ============================================================
 
 const DEFAULT_CONFIG = {
@@ -12,7 +12,7 @@ const DEFAULT_CONFIG = {
   pushHour: '8',
   enabled: true,
   aiSummary: true,
-  sources: ['google', 'reuters', 'bbc', 'xinhua', 'ap'],
+  sources: ['google', 'bbc', 'bloomberg', 'guardian', 'dw'],
 };
 
 const CATEGORIES = {
@@ -37,7 +37,7 @@ const LANGUAGES = {
 };
 
 // ============================================================
-// 新闻源定义
+// 新闻源（仅保留稳定可用的 RSS 地址）
 // ============================================================
 const NEWS_SOURCES = {
   google: {
@@ -51,38 +51,16 @@ const NEWS_SOURCES = {
       return 'https://news.google.com/rss?hl=' + hl + '&gl=' + gl + '&ceid=' + gl + ':' + hl;
     },
   },
-  reuters: {
-    label: '路透社 Reuters', flag: '📡',
-    getUrl: (config) => {
-      const catMap = { world:'world', business:'business', technology:'technology', science:'science', health:'health', sports:'sports', entertainment:'lifestyle' };
-      return 'https://feeds.reuters.com/reuters/' + (catMap[config.category] || 'world') + 'News';
-    },
-  },
   bbc: {
     label: 'BBC News', flag: '🇬🇧',
     getUrl: (config) => {
       const catMap = { world:'world', business:'business', technology:'technology', science:'science_and_environment', health:'health', sports:'sport', entertainment:'entertainment_and_arts' };
-      return 'http://feeds.bbci.co.uk/news/' + (catMap[config.category] || 'world') + '/rss.xml';
-    },
-  },
-  xinhua: {
-    label: '新华社', flag: '🇨🇳',
-    getUrl: () => 'https://feeds.feedburner.com/NewHuaNet-EnglishNews',
-  },
-  ap: {
-    label: '美联社 AP', flag: '🗞',
-    getUrl: (config) => {
-      const catMap = { world:'intl', business:'business', technology:'technology', science:'science', health:'health', sports:'sports', entertainment:'entertainment' };
-      return 'https://rsshub.app/apnews/topics/' + (catMap[config.category] || 'intl');
+      return 'https://feeds.bbci.co.uk/news/' + (catMap[config.category] || 'world') + '/rss.xml';
     },
   },
   bloomberg: {
     label: '彭博社 Bloomberg', flag: '💹',
     getUrl: () => 'https://feeds.bloomberg.com/markets/news.rss',
-  },
-  ft: {
-    label: '金融时报 FT', flag: '🏦',
-    getUrl: () => 'https://www.ft.com/rss/home',
   },
   guardian: {
     label: '卫报 The Guardian', flag: '🌐',
@@ -91,13 +69,29 @@ const NEWS_SOURCES = {
       return 'https://www.theguardian.com/' + (catMap[config.category] || 'world') + '/rss';
     },
   },
-  nhk: {
-    label: 'NHK World', flag: '🇯🇵',
-    getUrl: () => 'https://www3.nhk.or.jp/rss/news/cat0.xml',
+  dw: {
+    label: '德国之声 DW', flag: '📻',
+    getUrl: () => 'https://rss.dw.com/rdf/rss-en-all',
+  },
+  france24: {
+    label: 'France 24', flag: '🇫🇷',
+    getUrl: () => 'https://www.france24.com/en/rss',
   },
   aljazeera: {
     label: '半岛电视台 Al Jazeera', flag: '🌍',
     getUrl: () => 'https://www.aljazeera.com/xml/rss/all.xml',
+  },
+  nhk: {
+    label: 'NHK World', flag: '🇯🇵',
+    getUrl: () => 'https://www3.nhk.or.jp/rss/news/cat0.xml',
+  },
+  xinhua: {
+    label: '新华社', flag: '🇨🇳',
+    getUrl: () => 'https://feeds.feedburner.com/NewHuaNet-EnglishNews',
+  },
+  reuters: {
+    label: '路透社 Reuters', flag: '📡',
+    getUrl: () => 'https://feeds.reuters.com/reuters/topNews',
   },
 };
 
@@ -137,7 +131,7 @@ async function handleSaveConfig(request, env) {
 }
 
 // ============================================================
-// 新闻获取（多源并发）
+// 新闻获取 —— 修复：先抓足够多，再统一截取 maxItems 条
 // ============================================================
 async function fetchFromSource(sourceKey, config) {
   const source = NEWS_SOURCES[sourceKey];
@@ -146,7 +140,7 @@ async function fetchFromSource(sourceKey, config) {
     const url = source.getUrl(config);
     const resp = await fetch(url, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NewsBot/1.0)' },
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(10000),
     });
     if (!resp.ok) return [];
     const xml = await resp.text();
@@ -178,23 +172,31 @@ function parseRss(xml, sourceName, sourceFlag, config) {
 
 async function fetchAllNews(config) {
   const sources = (config.sources || DEFAULT_CONFIG.sources).filter(s => NEWS_SOURCES[s]);
-  const perSource = Math.max(2, Math.ceil(config.maxItems / sources.length));
+  // 每个源最多取 maxItems 条，保证有足够候选
   const results = await Promise.allSettled(sources.map(s => fetchFromSource(s, config)));
   const allItems = [];
   const seen = new Set();
-  results.forEach(r => {
-    if (r.status !== 'fulfilled') return;
-    let count = 0;
-    for (const item of r.value) {
-      if (count >= perSource) break;
-      const key = item.title.slice(0, 20);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      allItems.push(item);
-      count++;
+  // 轮询每个源，依次各取一条，确保来源均衡且总数达标
+  const buckets = results
+    .filter(r => r.status === 'fulfilled')
+    .map(r => r.value);
+  let added = true;
+  while (added && allItems.length < config.maxItems) {
+    added = false;
+    for (const bucket of buckets) {
+      if (allItems.length >= config.maxItems) break;
+      while (bucket.length > 0) {
+        const item = bucket.shift();
+        const key = item.title.slice(0, 20);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        allItems.push(item);
+        added = true;
+        break;
+      }
     }
-  });
-  return allItems.slice(0, config.maxItems);
+  }
+  return allItems;
 }
 
 function extract(xml, tag) {
@@ -205,6 +207,45 @@ function decodeHtml(str) {
   return str.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'");
 }
 
+// 判断标题是否已经是中文（含中文字符比例 > 30%）
+function isChinese(text) {
+  const cjk = (text.match(/[\u4e00-\u9fff]/g) || []).length;
+  return cjk / text.length > 0.3;
+}
+
+// ============================================================
+// Workers AI：批量翻译英文标题为中文
+// ============================================================
+async function translateTitles(env, items) {
+  if (!env.AI) return items;
+  // 只翻译非中文标题
+  const toTranslate = items.filter(item => !isChinese(item.title));
+  if (toTranslate.length === 0) return items;
+
+  try {
+    const numbered = toTranslate.map((item, i) => (i + 1) + '. ' + item.title).join('\n');
+    const prompt = '请将以下新闻标题逐条翻译为简体中文，保持编号格式，只输出翻译结果，不要任何解释：\n\n' + numbered;
+    const response = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 1000,
+    });
+    const raw = response?.choices?.[0]?.message?.content?.trim() || '';
+    const lines = raw.split('\n').filter(l => l.trim());
+    // 把翻译结果映射回对应条目
+    const translMap = {};
+    lines.forEach(line => {
+      const m = line.match(/^(\d+)[.、．]\s*(.+)/);
+      if (m) translMap[parseInt(m[1])] = m[2].trim();
+    });
+    toTranslate.forEach((item, i) => {
+      if (translMap[i + 1]) item.titleZh = translMap[i + 1];
+    });
+  } catch (e) {
+    console.error('翻译失败:', e.message);
+  }
+  return items;
+}
+
 // ============================================================
 // Workers AI 摘要
 // ============================================================
@@ -212,8 +253,9 @@ async function summarizeWithAI(env, items, config) {
   if (!env.AI) return null;
   try {
     const catLabel = CATEGORIES[config.category] || '综合';
-    const newsList = items.map((item, i) => (i+1) + '. [' + item.source + '] ' + item.title).join('\n');
-    const prompt = '你是一位专业的新闻编辑助手。以下是来自多家权威媒体的今日' + catLabel + '新闻标题，请完成以下任务：\n\n1. 用中文提炼出 3-5 个最重要的新闻要点，每点 1-2 句话，语言简洁专业\n2. 最后用一句话给出今日整体趋势或值得关注的信号\n\n新闻列表：\n' + newsList + '\n\n请直接输出摘要内容，不要有多余的前缀说明。';
+    // 用中文标题做摘要（若有翻译则用翻译版）
+    const newsList = items.map((item, i) => (i + 1) + '. ' + (item.titleZh || item.title)).join('\n');
+    const prompt = '你是一位专业的新闻编辑助手。以下是今日' + catLabel + '新闻标题，请：\n1. 用中文提炼 3-5 个最重要的新闻要点，每点 1-2 句话，简洁专业\n2. 最后一句给出今日整体趋势或值得关注的信号\n\n新闻列表：\n' + newsList + '\n\n直接输出摘要，不要前缀说明。';
     const response = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 600,
@@ -244,8 +286,14 @@ async function sendToTelegram(env, message) {
 async function formatMessage(items, config, env) {
   const catLabel = CATEGORIES[config.category] || '综合新闻';
   const now = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+
+  // 先翻译所有非中文标题
+  items = await translateTitles(env, items);
+
   let msg = '📰 <b>Cloudflare News Hub</b>\n';
   msg += '🗂 ' + catLabel + ' | 🕐 ' + now + '\n';
+
+  // AI 摘要
   if (config.aiSummary !== false) {
     const summary = await summarizeWithAI(env, items, config);
     if (summary) {
@@ -253,6 +301,8 @@ async function formatMessage(items, config, env) {
       msg += summary + '\n';
     }
   }
+
+  // 原文链接列表，标题显示中文
   msg += '\n━━━━━ 📎 原文链接 ━━━━━\n\n';
   const grouped = {};
   items.forEach(item => {
@@ -263,7 +313,8 @@ async function formatMessage(items, config, env) {
   for (const [src, group] of Object.entries(grouped)) {
     msg += group.flag + ' <b>' + src + '</b>\n';
     group.items.forEach(item => {
-      msg += idx + '. <a href="' + item.link + '">' + item.title + '</a>\n';
+      const displayTitle = item.titleZh || item.title;
+      msg += idx + '. <a href="' + item.link + '">' + displayTitle + '</a>\n';
       idx++;
     });
     msg += '\n';
@@ -306,14 +357,21 @@ async function handlePreview(env) {
   try {
     const config = await getConfig(env);
     const items = await fetchAllNews(config);
+    // 预览也做翻译
+    const translatedItems = await translateTitles(env, items);
     let summary = null;
-    if (config.aiSummary !== false) summary = await summarizeWithAI(env, items, config);
-    return Response.json({ success: true, items, summary });
+    if (config.aiSummary !== false) summary = await summarizeWithAI(env, translatedItems, config);
+    // 预览返回带中文标题的数据
+    const displayItems = translatedItems.map(item => ({
+      ...item,
+      title: item.titleZh || item.title,
+    }));
+    return Response.json({ success: true, items: displayItems, summary });
   } catch (e) { return Response.json({ success: false, message: e.message }, { status: 500 }); }
 }
 
 // ============================================================
-// 前端 UI - script 块单独生成，避免模板字符串嵌套冲突
+// 前端 UI
 // ============================================================
 function buildClientScript() {
   var lines = [];
@@ -351,7 +409,7 @@ function buildClientScript() {
   lines.push("  showAlert(data.message, data.success ? 'success' : 'error');");
   lines.push("};");
   lines.push("window.testPush = async function() {");
-  lines.push("  showAlert('\u6b63\u5728\u751f\u6210 AI \u6458\u8981\u5e76\u63a8\u9001\uff0c\u8bf7\u7a0d\u5019\uff0810-20\u79d2\uff09...', 'success');");
+  lines.push("  showAlert('\u6b63\u5728\u7ffb\u8bd1\u5e76\u751f\u6210\u6458\u8981\uff0c\u8bf7\u7a0d\u5019\uff0820-30\u79d2\uff09...', 'success');");
   lines.push("  var resp = await fetch('/api/test', { method: 'POST' });");
   lines.push("  var data = await resp.json();");
   lines.push("  showAlert(data.message, data.success ? 'success' : 'error');");
@@ -360,7 +418,7 @@ function buildClientScript() {
   lines.push("  var card = document.getElementById('previewCard');");
   lines.push("  var list = document.getElementById('previewList');");
   lines.push("  card.style.display = 'block';");
-  lines.push("  list.innerHTML = '<p style=\"color:#94a3b8\">\u6b63\u5728\u6293\u53d6\u65b0\u95fb\u5e76\u751f\u6210 AI \u6458\u8981\uff0c\u8bf7\u7a0d\u5019...</p>';");
+  lines.push("  list.innerHTML = '<p style=\"color:#94a3b8\">\u6b63\u5728\u6293\u53d6\u5e76\u7ffb\u8bd1\u65b0\u95fb\uff0c\u8bf7\u7a0d\u5019...</p>';");
   lines.push("  var resp = await fetch('/api/preview');");
   lines.push("  var data = await resp.json();");
   lines.push("  if (!data.success) { list.innerHTML = '<p style=\"color:#f87171\">' + data.message + '</p>'; return; }");
@@ -442,23 +500,21 @@ function renderHTML(config) {
     '@media(max-width:600px){.form-row{grid-template-columns:1fr}}',
   ].join('\n');
 
-  const html = [
+  return [
     '<!DOCTYPE html>',
     '<html lang="zh-CN">',
     '<head>',
     '<meta charset="UTF-8">',
     '<meta name="viewport" content="width=device-width,initial-scale=1.0">',
     '<title>Cloudflare News Hub</title>',
-    '<style>',
-    css,
-    '</style>',
+    '<style>', css, '</style>',
     '</head>',
     '<body>',
     '<div class="header">',
     '  <span style="font-size:32px">📰</span>',
     '  <div>',
     '    <h1>Cloudflare News Hub</h1>',
-    '    <p style="color:#93c5fd;font-size:13px;margin-top:4px">多源聚合 · AI 摘要 · Telegram 推送</p>',
+    '    <p style="color:#93c5fd;font-size:13px;margin-top:4px">多源聚合 · AI翻译 · AI摘要 · Telegram推送</p>',
     '  </div>',
     '</div>',
     '<div class="container">',
@@ -492,7 +548,7 @@ function renderHTML(config) {
     '      </div>',
     '    </div>',
     '    <div class="form-group">',
-    '      <label>AI 摘要</label>',
+    '      <label>AI 摘要（含自动翻译）</label>',
     '      <div class="toggle"><input type="checkbox" id="aiSummary"' + aiChecked + '><label for="aiSummary" id="aiSummaryLabel">' + aiLabel + '</label></div>',
     '    </div>',
     '  </div>',
@@ -506,7 +562,7 @@ function renderHTML(config) {
     '    <div id="alert" class="alert"></div>',
     '  </div>',
     '  <div class="card" id="previewCard" style="display:none">',
-    '    <h2>📋 新闻预览</h2>',
+    '    <h2>📋 新闻预览（中文）</h2>',
     '    <div id="previewList"></div>',
     '  </div>',
     '</div>',
@@ -516,6 +572,4 @@ function renderHTML(config) {
     '</body>',
     '</html>',
   ].join('\n');
-
-  return html;
 }
