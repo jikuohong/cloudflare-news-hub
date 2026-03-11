@@ -39,6 +39,7 @@ const NEWS_SOURCES = {
   initium:     { label: '端传媒',       flag: '🌐', region: '海外' },
   dwnews:      { label: '德国之声中文', flag: '🇩🇪', region: '海外' },
   googlezh:    { label: 'Google新闻',   flag: '🔍', region: '聚合' },
+  chosun:      { label: '朝鲜日报中文', flag: '🇰🇷', region: '海外' },
 };
 
 function getSourceUrl(key, config) {
@@ -57,6 +58,7 @@ function getSourceUrl(key, config) {
     bbc_trad:     'https://feeds.bbci.co.uk/zhongwen/trad/rss.xml',
     initium:      'https://theinitium.com/feed',
     dwnews:       'https://rss.dw.com/rdf/rss-chi-all',
+    chosun:       'https://cnnews.chosun.com/client/news/rss.asp',
     googlezh:     (() => {
       if (config.keywords) return 'https://news.google.com/rss/search?q=' + encodeURIComponent(config.keywords) + '&hl=zh-TW&gl=TW&ceid=TW:zh-Hant';
       const catMap = { world:'WORLD', business:'BUSINESS', technology:'TECHNOLOGY', entertainment:'ENTERTAINMENT', sports:'SPORTS', science:'SCIENCE', health:'HEALTH' };
@@ -345,6 +347,7 @@ var SOURCE_LIST = {
   initium:{label:'端传媒',flag:'🌐',region:'海外'},
   dwnews:{label:'德国之声中文',flag:'🇩🇪',region:'海外'},
   googlezh:{label:'Google新闻',flag:'🔍',region:'聚合'},
+  chosun:{label:'朝鲜日报中文',flag:'🇰🇷',region:'海外'},
 };
 
 var config = {};
