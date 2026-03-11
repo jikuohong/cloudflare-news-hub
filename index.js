@@ -507,6 +507,18 @@ var SOURCE_LIST = {
 
 var config = {};
 
+function ce(tag, attrs, text) {
+  var el = document.createElement(tag);
+  if (attrs) Object.keys(attrs).forEach(function(k) {
+    if (k === 'className') el.className = attrs[k];
+    else if (k === 'style') el.style.cssText = attrs[k];
+    else if (k === 'html') el.innerHTML = attrs[k];
+    else el.setAttribute(k, attrs[k]);
+  });
+  if (text != null) el.textContent = text;
+  return el;
+}
+
 async function loadConfig() {
   try {
     var r = await fetch('/api/config');
@@ -515,60 +527,69 @@ async function loadConfig() {
   } catch(e) { console.error('loadConfig error', e); }
 }
 
+function setVal(id, val) { var el = document.getElementById(id); if (el) el.value = val || ''; }
+function setChk(id, val) { var el = document.getElementById(id); if (el) el.checked = !!val; }
+
 function applyConfigToUI() {
-  document.getElementById('cat-select').value = config.category || 'general';
-  document.getElementById('kw-input').value = config.keywords || '';
-  document.getElementById('exkw-input').value = config.excludeKeywords || '';
-  document.getElementById('max-input').value = config.maxItems || 20;
-  document.getElementById('hour-input').value = config.pushHours || '8,12,16,20';
-  document.getElementById('enabled-toggle').checked = config.enabled !== false;
-  document.getElementById('ai-toggle').checked = config.aiSummary !== false;
-  document.getElementById('tg-toggle').checked = config.tgEnabled !== false;
-  document.getElementById('wxpusher-toggle').checked = !!config.wxpusherEnabled;
-  document.getElementById('wxpusher-token').value = config.wxpusherToken || '';
-  document.getElementById('wxpusher-uid').value = config.wxpusherUid || '';
-  document.getElementById('bark-toggle').checked = !!config.barkEnabled;
-  document.getElementById('bark-url').value = config.barkUrl || '';
-  document.getElementById('wxwork-toggle').checked = !!config.wxworkEnabled;
-  document.getElementById('wxwork-webhook').value = config.wxworkWebhook || '';
-  document.getElementById('ding-toggle').checked = !!config.dingEnabled;
-  document.getElementById('ding-webhook').value = config.dingWebhook || '';
-  document.getElementById('feishu-toggle').checked = !!config.feishuEnabled;
-  document.getElementById('feishu-webhook').value = config.feishuWebhook || '';
-  document.getElementById('pushplus-toggle').checked = !!config.pushplusEnabled;
-  document.getElementById('pushplus-token').value = config.pushplusToken || '';
+  setVal('cat-select', config.category || 'general');
+  setVal('kw-input', config.keywords);
+  setVal('exkw-input', config.excludeKeywords);
+  setVal('max-input', config.maxItems || 20);
+  setVal('hour-input', config.pushHours || '8,12,16,20');
+  setChk('enabled-toggle', config.enabled !== false);
+  setChk('ai-toggle', config.aiSummary !== false);
+  setChk('tg-toggle', config.tgEnabled !== false);
+  setChk('wxpusher-toggle', config.wxpusherEnabled);
+  setVal('wxpusher-token', config.wxpusherToken);
+  setVal('wxpusher-uid', config.wxpusherUid);
+  setChk('bark-toggle', config.barkEnabled);
+  setVal('bark-url', config.barkUrl);
+  setChk('wxwork-toggle', config.wxworkEnabled);
+  setVal('wxwork-webhook', config.wxworkWebhook);
+  setChk('ding-toggle', config.dingEnabled);
+  setVal('ding-webhook', config.dingWebhook);
+  setChk('feishu-toggle', config.feishuEnabled);
+  setVal('feishu-webhook', config.feishuWebhook);
+  setChk('pushplus-toggle', config.pushplusEnabled);
+  setVal('pushplus-token', config.pushplusToken);
   currentCategory = config.category || 'general';
   renderSourceGrid(config.sources || []);
   updateNavActive();
 }
 
 function renderSourceGrid(selected) {
+  var grid = document.getElementById('src-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
   var regions = {};
-  Object.entries(SOURCE_LIST).forEach(function(e) {
-    var k = e[0], v = e[1];
-    if (!regions[v.region]) regions[v.region] = [];
+  var regionOrder = [];
+  Object.keys(SOURCE_LIST).forEach(function(k) {
+    var v = SOURCE_LIST[k];
+    if (!regions[v.region]) { regions[v.region] = []; regionOrder.push(v.region); }
     regions[v.region].push({key:k, label:v.label, flag:v.flag, color:v.color});
   });
-  var html = '';
-  Object.entries(regions).forEach(function(e) {
-    var regionName = e[0], srcs = e[1];
-    html += '<div class="src-region-label">' + regionName + '</div>';
-    srcs.forEach(function(src) {
+  regionOrder.forEach(function(region) {
+    var lbl = ce('div', {className:'src-region-label'}, region);
+    grid.appendChild(lbl);
+    regions[region].forEach(function(src) {
       var isChecked = selected.indexOf(src.key) !== -1;
-      var activeClass = isChecked ? ' active' : '';
-      var styleAttr = isChecked ? ' style="--src-color:' + src.color + '"' : '';
-      html += '<label class="src-item' + activeClass + '"' + styleAttr + '>';
-      html += '<input type="checkbox" value="' + src.key + '"' + (isChecked ? ' checked' : '') + ' onchange="toggleSrc(this,\'' + src.color + '\')">';
-      html += '<span>' + src.flag + ' ' + src.label + '</span></label>';
+      var label = ce('label', {className:'src-item' + (isChecked ? ' active' : '')});
+      if (isChecked) label.style.setProperty('--src-color', src.color);
+      var inp = ce('input');
+      inp.type = 'checkbox';
+      inp.value = src.key;
+      inp.checked = isChecked;
+      inp.addEventListener('change', function() {
+        label.classList.toggle('active', inp.checked);
+        if (inp.checked) label.style.setProperty('--src-color', src.color);
+        else label.style.removeProperty('--src-color');
+      });
+      var span = ce('span', null, src.flag + ' ' + src.label);
+      label.appendChild(inp);
+      label.appendChild(span);
+      grid.appendChild(label);
     });
   });
-  document.getElementById('src-grid').innerHTML = html;
-}
-
-function toggleSrc(el, color) {
-  el.parentElement.classList.toggle('active', el.checked);
-  if (el.checked) el.parentElement.style.setProperty('--src-color', color);
-  else el.parentElement.style.removeProperty('--src-color');
 }
 
 function updateNavActive() {
@@ -584,31 +605,34 @@ function selectCategory(cat) {
   loadNews();
 }
 
+function getVal(id) { var el = document.getElementById(id); return el ? el.value : ''; }
+function getChk(id) { var el = document.getElementById(id); return el ? el.checked : false; }
+
 async function saveConfig() {
   var sources = Array.from(document.querySelectorAll('#src-grid input:checked')).map(function(el){ return el.value; });
   var newConf = {
-    category: document.getElementById('cat-select').value,
-    keywords: document.getElementById('kw-input').value,
-    excludeKeywords: document.getElementById('exkw-input').value,
-    maxItems: parseInt(document.getElementById('max-input').value) || 20,
-    pushHours: document.getElementById('hour-input').value,
-    enabled: document.getElementById('enabled-toggle').checked,
-    aiSummary: document.getElementById('ai-toggle').checked,
+    category: getVal('cat-select'),
+    keywords: getVal('kw-input'),
+    excludeKeywords: getVal('exkw-input'),
+    maxItems: parseInt(getVal('max-input')) || 20,
+    pushHours: getVal('hour-input'),
+    enabled: getChk('enabled-toggle'),
+    aiSummary: getChk('ai-toggle'),
     sources: sources,
-    tgEnabled: document.getElementById('tg-toggle').checked,
-    wxpusherEnabled: document.getElementById('wxpusher-toggle').checked,
-    wxpusherToken: document.getElementById('wxpusher-token').value,
-    wxpusherUid: document.getElementById('wxpusher-uid').value,
-    barkEnabled: document.getElementById('bark-toggle').checked,
-    barkUrl: document.getElementById('bark-url').value,
-    wxworkEnabled: document.getElementById('wxwork-toggle').checked,
-    wxworkWebhook: document.getElementById('wxwork-webhook').value,
-    dingEnabled: document.getElementById('ding-toggle').checked,
-    dingWebhook: document.getElementById('ding-webhook').value,
-    feishuEnabled: document.getElementById('feishu-toggle').checked,
-    feishuWebhook: document.getElementById('feishu-webhook').value,
-    pushplusEnabled: document.getElementById('pushplus-toggle').checked,
-    pushplusToken: document.getElementById('pushplus-token').value,
+    tgEnabled: getChk('tg-toggle'),
+    wxpusherEnabled: getChk('wxpusher-toggle'),
+    wxpusherToken: getVal('wxpusher-token'),
+    wxpusherUid: getVal('wxpusher-uid'),
+    barkEnabled: getChk('bark-toggle'),
+    barkUrl: getVal('bark-url'),
+    wxworkEnabled: getChk('wxwork-toggle'),
+    wxworkWebhook: getVal('wxwork-webhook'),
+    dingEnabled: getChk('ding-toggle'),
+    dingWebhook: getVal('ding-webhook'),
+    feishuEnabled: getChk('feishu-toggle'),
+    feishuWebhook: getVal('feishu-webhook'),
+    pushplusEnabled: getChk('pushplus-toggle'),
+    pushplusToken: getVal('pushplus-token'),
   };
   config = newConf;
   currentCategory = newConf.category;
@@ -618,7 +642,7 @@ async function saveConfig() {
     var d = await r.json();
     showToast(d.message, d.success ? 'success' : 'error');
     loadNews();
-  } catch(e) { showToast('保存失败: ' + e.message, 'error'); }
+  } catch(e) { showToast('保存失败', 'error'); }
 }
 
 async function testPush() {
@@ -627,7 +651,7 @@ async function testPush() {
     var r = await fetch('/api/test', {method:'POST'});
     var d = await r.json();
     showToast(d.message, d.success ? 'success' : 'error');
-  } catch(e) { showToast('推送失败: ' + e.message, 'error'); }
+  } catch(e) { showToast('推送失败', 'error'); }
 }
 
 async function checkHealth() {
@@ -645,7 +669,7 @@ async function checkHealth() {
       var el = document.querySelector('#src-grid input[value="' + h.key + '"]');
       if (el) el.parentElement.classList.toggle('src-fail', !h.ok);
     });
-  } catch(e) { showToast('检测失败: ' + e.message, 'error'); }
+  } catch(e) { showToast('检测失败', 'error'); }
 }
 
 var searchQuery = '';
@@ -669,17 +693,34 @@ function markRead(titleKey) {
   try { localStorage.setItem('readItems', JSON.stringify(Array.from(readItems).slice(-300))); } catch(e) {}
 }
 
+function openNews(el) {
+  var href = el.getAttribute('data-href');
+  var key = el.getAttribute('data-key');
+  if (key) markRead(key);
+  el.classList.add('read');
+  if (href) window.open(href, '_blank');
+}
+
 async function loadNews() {
   var area = document.getElementById('news-area');
-  area.innerHTML = '<div class="loading"><div class="spinner"></div><p>正在抓取新闻...</p></div>';
+  area.innerHTML = '';
+  var loading = ce('div', {className:'loading'});
+  loading.innerHTML = '<div class="spinner"></div>';
+  loading.appendChild(ce('p', null, '正在抓取新闻...'));
+  area.appendChild(loading);
   try {
     var r = await fetch('/api/news');
     var d = await r.json();
-    if (!d.success) { area.innerHTML = '<div class="error-msg">获取失败：' + (d.message||'未知错误') + '</div>'; return; }
-    renderNews(d);
+    if (!d.success) {
+      area.innerHTML = '';
+      area.appendChild(ce('div', {className:'error-msg'}, '获取失败：' + (d.message || '未知错误')));
+      return;
+    }
+    renderNews(area, d);
     if (searchQuery) filterNews(searchQuery);
   } catch(e) {
-    area.innerHTML = '<div class="error-msg">网络错误，请刷新重试</div>';
+    area.innerHTML = '';
+    area.appendChild(ce('div', {className:'error-msg'}, '网络错误，请刷新重试'));
   }
 }
 
@@ -696,52 +737,65 @@ function timeAgo(dateStr) {
   } catch(e) { return ''; }
 }
 
-function renderNews(data) {
-  var area = document.getElementById('news-area');
-  var catTitle = data.category || '综合新闻';
+function renderNews(area, data) {
+  area.innerHTML = '';
 
-  var html = '<div class="news-header">';
-  html += '<h1 class="news-title">📰 ' + catTitle + '</h1>';
-  html += '<span class="news-count" id="news-count">' + data.items.length + ' 条新闻</span>';
-  html += '</div>';
+  // Header
+  var header = ce('div', {className:'news-header'});
+  header.appendChild(ce('h1', {className:'news-title'}, '📰 ' + (data.category || '综合新闻')));
+  header.appendChild(ce('span', {className:'news-count', id:'news-count'}, data.items.length + ' 条新闻'));
+  area.appendChild(header);
 
-  html += '<div class="search-bar"><input class="search-input" type="text" placeholder="搜索新闻标题、来源..." oninput="filterNews(this.value)" value=""></div>';
+  // Search
+  var searchBar = ce('div', {className:'search-bar'});
+  var searchInput = ce('input', {className:'search-input', type:'text', placeholder:'搜索新闻标题、来源...'});
+  searchInput.addEventListener('input', function() { filterNews(this.value); });
+  searchBar.appendChild(searchInput);
+  area.appendChild(searchBar);
 
+  // AI Summary
   if (data.summary) {
-    html += '<div class="summary-card"><div class="summary-header"><span class="ai-badge">🤖 AI 摘要</span></div>';
-    html += '<div class="summary-body">' + data.summary.replace(/\n/g, '<br>') + '</div></div>';
+    var card = ce('div', {className:'summary-card'});
+    var hdr = ce('div', {className:'summary-header'});
+    hdr.appendChild(ce('span', {className:'ai-badge'}, '🤖 AI 摘要'));
+    card.appendChild(hdr);
+    var body = ce('div', {className:'summary-body'});
+    body.innerHTML = data.summary.replace(/\n/g, '<br>');
+    card.appendChild(body);
+    area.appendChild(card);
   }
 
-  html += '<div class="news-grid">';
+  // News grid
+  var grid = ce('div', {className:'news-grid'});
   data.items.forEach(function(item) {
     var ago = timeAgo(item.pubDate);
-    var titleKey = item.title.slice(0, 30);
+    var titleKey = item.title ? item.title.slice(0, 30) : '';
     var isRead = readItems.has(titleKey);
     var color = item.color || '#2563eb';
-    var safeLink = (item.link || '').replace(/"/g, '%22');
-    var cardClass = 'news-card' + (isRead ? ' read' : '');
-    html += '<div class="' + cardClass + '" onclick="openNews(this)" data-href="' + safeLink + '" data-key="' + titleKey.replace(/"/g, '') + '">';
-    html += '<div class="card-left">';
-    html += '<span class="card-source" style="background:' + color + '20;color:' + color + '">' + (item.flag || '') + ' ' + (item.source || '') + '</span>';
-    if (ago) html += '<span class="card-time">' + ago + '</span>';
-    html += '</div>';
-    html += '<div class="card-body">';
-    html += '<div class="card-title">' + (item.title || '') + '</div>';
-    if (item.desc) html += '<div class="card-desc">' + item.desc + '</div>';
-    html += '</div>';
-    if (isRead) html += '<span class="read-badge">已读</span>';
-    html += '</div>';
-  });
-  html += '</div>';
-  area.innerHTML = html;
-}
 
-function openNews(el) {
-  var href = el.getAttribute('data-href');
-  var key = el.getAttribute('data-key');
-  if (key) markRead(key);
-  el.classList.add('read');
-  if (href) window.open(href, '_blank');
+    var cardEl = ce('div', {className:'news-card' + (isRead ? ' read' : '')});
+    if (item.link) cardEl.setAttribute('data-href', item.link);
+    if (titleKey) cardEl.setAttribute('data-key', titleKey);
+    cardEl.addEventListener('click', function() { openNews(this); });
+
+    var left = ce('div', {className:'card-left'});
+    var srcSpan = ce('span', {className:'card-source'});
+    srcSpan.style.background = color + '20';
+    srcSpan.style.color = color;
+    srcSpan.textContent = (item.flag || '') + ' ' + (item.source || '');
+    left.appendChild(srcSpan);
+    if (ago) left.appendChild(ce('span', {className:'card-time'}, ago));
+    cardEl.appendChild(left);
+
+    var body = ce('div', {className:'card-body'});
+    body.appendChild(ce('div', {className:'card-title'}, item.title || ''));
+    if (item.desc) body.appendChild(ce('div', {className:'card-desc'}, item.desc));
+    cardEl.appendChild(body);
+
+    if (isRead) cardEl.appendChild(ce('span', {className:'read-badge'}, '已读'));
+    grid.appendChild(cardEl);
+  });
+  area.appendChild(grid);
 }
 
 function showToast(msg, type) {
@@ -758,28 +812,29 @@ function lunarDate(date) {
   var heavenly = ['甲','乙','丙','丁','戊','己','庚','辛','壬','癸'];
   var earthly = ['子','丑','寅','卯','辰','巳','午','未','申','酉','戌','亥'];
   var animals = ['鼠','牛','虎','兔','龙','蛇','马','羊','猴','鸡','狗','猪'];
-  var baseDate = new Date(1900, 0, 31);
-  var offset = Math.floor((date - baseDate) / 86400000);
-  var approxYear = Math.floor(offset / 365.25) + 1900;
-  var yearOffset = approxYear - 1900;
-  var stem = heavenly[((yearOffset % 10) + 10) % 10];
-  var branch = earthly[((yearOffset % 12) + 12) % 12];
-  var animal = animals[((yearOffset % 12) + 12) % 12];
-  var dayInYear = offset % 354;
-  var month = Math.min(11, Math.floor(dayInYear / 29.5));
-  var day = Math.min(29, Math.floor(dayInYear % 29.5));
-  return stem + branch + '年（' + animal + '年）' + lunarMonths[month] + '月' + lunarDays[day];
+  var base = new Date(1900, 0, 31);
+  var offset = Math.floor((date - base) / 86400000);
+  var yr = Math.floor(offset / 365.25) + 1900;
+  var yo = yr - 1900;
+  var stem = heavenly[((yo % 10) + 10) % 10];
+  var branch = earthly[((yo % 12) + 12) % 12];
+  var animal = animals[((yo % 12) + 12) % 12];
+  var diy = offset % 354;
+  var mon = Math.min(11, Math.floor(diy / 29.5));
+  var day = Math.min(29, Math.floor(diy % 29.5));
+  return stem + branch + '年（' + animal + '年）' + lunarMonths[mon] + '月' + lunarDays[day];
 }
 
 function updateClock() {
   var now = new Date();
   var weeks = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
+  var pad = function(n) { return String(n).padStart(2,'0'); };
   var te = document.getElementById('clock-time');
   var de = document.getElementById('clock-date');
   var we = document.getElementById('clock-week');
   var le = document.getElementById('clock-lunar');
-  if (te) te.textContent = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ':' + String(now.getSeconds()).padStart(2,'0');
-  if (de) de.textContent = now.getFullYear() + '年' + String(now.getMonth()+1).padStart(2,'0') + '月' + String(now.getDate()).padStart(2,'0') + '日';
+  if (te) te.textContent = pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
+  if (de) de.textContent = now.getFullYear() + '年' + pad(now.getMonth()+1) + '月' + pad(now.getDate()) + '日';
   if (we) we.textContent = weeks[now.getDay()];
   if (le) le.textContent = '农历 ' + lunarDate(now);
 }
@@ -797,24 +852,18 @@ function toggleTheme() {
   localStorage.setItem('theme', isDark ? 'light' : 'dark');
   applyTheme(!isDark);
 }
-function initTheme() {
+(function initTheme() {
   var saved = localStorage.getItem('theme');
   if (saved) { applyTheme(saved === 'dark'); }
   else { applyTheme(window.matchMedia('(prefers-color-scheme: dark)').matches); }
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
     if (!localStorage.getItem('theme')) applyTheme(e.matches);
   });
-}
-initTheme();
+})();
 
-// Sidebar
+// Expose to global
 window.loadNews = loadNews;
 window.toggleTheme = toggleTheme;
-window.toggleSidebar = function() {
-  sidebarOpen = !sidebarOpen;
-  document.getElementById('sidebar').classList.toggle('open', sidebarOpen);
-  document.getElementById('overlay').classList.toggle('show', sidebarOpen && window.innerWidth <= 900);
-};
 window.selectCategory = selectCategory;
 window.saveConfig = saveConfig;
 window.testPush = testPush;
@@ -822,6 +871,11 @@ window.checkHealth = checkHealth;
 window.filterNews = filterNews;
 window.markRead = markRead;
 window.openNews = openNews;
+window.toggleSidebar = function() {
+  sidebarOpen = !sidebarOpen;
+  document.getElementById('sidebar').classList.toggle('open', sidebarOpen);
+  document.getElementById('overlay').classList.toggle('show', sidebarOpen && window.innerWidth <= 900);
+};
 
 document.addEventListener('DOMContentLoaded', function() {
   loadConfig().then(function() { loadNews(); });
@@ -831,6 +885,14 @@ document.addEventListener('DOMContentLoaded', function() {
       document.getElementById('sidebar').classList.remove('open');
       document.getElementById('overlay').classList.remove('show');
     }
+  });
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.ch-toggle-btn');
+    if (!btn) return;
+    var targetId = btn.getAttribute('data-target');
+    if (!targetId) return;
+    var body = document.getElementById(targetId);
+    if (body) body.classList.toggle('open');
   });
 });
 `;
@@ -954,44 +1016,50 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei
 }`;
 
   // push channel rows
-  function toggleInput(id) {
-    return 'onclick="var b=document.getElementById(\'' + id + '\');b.classList.toggle(\'open\')"';
-  }
-  const pushChannels = [
-    ['tg', 'Telegram', '🤖', [], 'tg-toggle'],
-    ['wxpusher', 'WxPusher（微信）', '💬', [
-      ['wxpusher-token', 'AppToken'],
-      ['wxpusher-uid', 'UID'],
-    ], 'wxpusher-toggle'],
-    ['bark', 'Bark（iOS）', '🍎', [['bark-url', 'Bark URL (https://api.day.app/xxx)']], 'bark-toggle'],
-    ['wxwork', '企业微信', '💼', [['wxwork-webhook', 'Webhook URL']], 'wxwork-toggle'],
-    ['ding', '钉钉', '📎', [['ding-webhook', 'Webhook URL']], 'ding-toggle'],
-    ['feishu', '飞书', '🪐', [['feishu-webhook', 'Webhook URL']], 'feishu-toggle'],
-    ['pushplus', 'PushPlus（微信）', '📲', [['pushplus-token', 'Token']], 'pushplus-toggle'],
-  ];
-
-  const pushHTML = pushChannels.map(function(ch) {
-    const [key, label, icon, fields, toggleId] = ch;
-    const checked = key === 'tg' ? (config.tgEnabled !== false) : !!config[key + 'Enabled'];
-    let html = '<div class="push-channel">';
-    html += '<div class="push-channel-header">';
-    html += '<span>' + icon + ' ' + label + '</span>';
-    html += '<div style="display:flex;align-items:center;gap:8px">';
-    if (fields.length) html += '<span style="font-size:11px;color:var(--text-secondary);cursor:pointer" ' + toggleInput(key + '-body') + '>配置 ▾</span>';
-    html += '<label class="toggle"><input type="checkbox" id="' + toggleId + '"' + (checked ? ' checked' : '') + '><span class="toggle-slider"></span></label>';
-    html += '</div></div>';
-    if (fields.length) {
-      html += '<div class="push-channel-body" id="' + key + '-body">';
-      fields.forEach(function(f) {
-        const val = config[f[0].replace(/-/g,'').replace('wxpushertoken','wxpusherToken').replace('wxpusheruid','wxpusherUid').replace('barkurl','barkUrl').replace('wxworkwebhook','wxworkWebhook').replace('dingwebhook','dingWebhook').replace('feishuwebhook','feishuWebhook').replace('pushplustoken','pushplusToken')] || '';
-        html += '<label class="form-label">' + f[1] + '</label>';
-        html += '<input class="form-control" type="text" id="' + f[0] + '" value="' + (val || '') + '" placeholder="' + f[1] + '" style="margin-bottom:6px">';
-      });
+  function renderPushChannels(config) {
+    var channels = [
+      {key:'tg',      label:'Telegram',         icon:'🤖', fields:[], toggleId:'tg-toggle',       checked: config.tgEnabled !== false},
+      {key:'wxpusher',label:'WxPusher（微信）',  icon:'💬', fields:[['wxpusher-token','AppToken'],['wxpusher-uid','UID']], toggleId:'wxpusher-toggle', checked: !!config.wxpusherEnabled},
+      {key:'bark',    label:'Bark（iOS）',        icon:'🍎', fields:[['bark-url','Bark URL']], toggleId:'bark-toggle',      checked: !!config.barkEnabled},
+      {key:'wxwork',  label:'企业微信',           icon:'💼', fields:[['wxwork-webhook','Webhook URL']], toggleId:'wxwork-toggle',    checked: !!config.wxworkEnabled},
+      {key:'ding',    label:'钉钉',               icon:'📎', fields:[['ding-webhook','Webhook URL']], toggleId:'ding-toggle',      checked: !!config.dingEnabled},
+      {key:'feishu',  label:'飞书',               icon:'🪐', fields:[['feishu-webhook','Webhook URL']], toggleId:'feishu-toggle',    checked: !!config.feishuEnabled},
+      {key:'pushplus',label:'PushPlus（微信）',   icon:'📲', fields:[['pushplus-token','Token']], toggleId:'pushplus-toggle',  checked: !!config.pushplusEnabled},
+    ];
+    var fieldValues = {
+      'wxpusher-token': config.wxpusherToken || '',
+      'wxpusher-uid':   config.wxpusherUid || '',
+      'bark-url':       config.barkUrl || '',
+      'wxwork-webhook': config.wxworkWebhook || '',
+      'ding-webhook':   config.dingWebhook || '',
+      'feishu-webhook': config.feishuWebhook || '',
+      'pushplus-token': config.pushplusToken || '',
+    };
+    var html = '';
+    channels.forEach(function(ch) {
+      html += '<div class="push-channel">';
+      html += '<div class="push-channel-header">';
+      html += '<span>' + ch.icon + ' ' + ch.label + '</span>';
+      html += '<div style="display:flex;align-items:center;gap:8px">';
+      if (ch.fields.length) {
+        html += '<span class="ch-toggle-btn" data-target="' + ch.key + '-body" style="font-size:11px;color:var(--text-secondary);cursor:pointer">配置 ▾</span>';
+      }
+      html += '<label class="toggle"><input type="checkbox" id="' + ch.toggleId + '"' + (ch.checked ? ' checked' : '') + '><span class="toggle-slider"></span></label>';
+      html += '</div></div>';
+      if (ch.fields.length) {
+        html += '<div class="push-channel-body" id="' + ch.key + '-body">';
+        ch.fields.forEach(function(f) {
+          var val = fieldValues[f[0]] || '';
+          html += '<label class="form-label">' + f[1] + '</label>';
+          html += '<input class="form-control" type="text" id="' + f[0] + '" value="' + val.replace(/"/g, '&quot;') + '" placeholder="' + f[1] + '" style="margin-bottom:6px">';
+        });
+        html += '</div>';
+      }
       html += '</div>';
-    }
-    html += '</div>';
+    });
     return html;
-  }).join('');
+  }
+
 
   return [
     '<!DOCTYPE html>',
@@ -1034,7 +1102,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei
     '    <div class="toggle-row"><span class="toggle-label">定时推送</span><label class="toggle"><input type="checkbox" id="enabled-toggle"' + (config.enabled ? ' checked' : '') + '><span class="toggle-slider"></span></label></div>',
     '    <div class="toggle-row"><span class="toggle-label">AI 摘要</span><label class="toggle"><input type="checkbox" id="ai-toggle"' + (config.aiSummary !== false ? ' checked' : '') + '><span class="toggle-slider"></span></label></div>',
     '    <div class="settings-title" style="padding-top:14px">📲 推送渠道</div>',
-    pushHTML,
+    renderPushChannels(config),
     '    <div class="settings-title" style="padding-top:14px">📡 新闻来源</div>',
     '    <div id="src-grid"></div>',
     '    <button class="save-btn" onclick="saveConfig()">💾 保存配置</button>',
