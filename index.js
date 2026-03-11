@@ -3,7 +3,8 @@
 // ============================================================
 
 const DEFAULT_CONFIG = {
-  category: 'general',
+  category: 'general',      // 页面浏览分类
+  pushCategory: 'general',  // 推送分类（独立控制）
   keywords: '',
   excludeKeywords: '',
   maxItems: 20,
@@ -373,7 +374,8 @@ function filterAlreadyPushed(items, pushedTitles) {
 
 // ── 构建消息 payload（含去重）────────────────────────────────
 async function buildPlainMessage(env, config) {
-  const pushConfig = { ...config, _maxAgeDays: 1 };
+  // 推送使用独立的 pushCategory，不影响页面浏览分类
+  const pushConfig = { ...config, category: config.pushCategory || config.category, _maxAgeDays: 1 };
   const allItems = await fetchAllNews(pushConfig, env);  // 优化⑤
   if (allItems.length === 0) throw new Error('没有获取到新闻');
 
@@ -776,7 +778,7 @@ async function loadConfig() {
 }
 
 function applyConfigToUI() {
-  document.getElementById('cat-select').value = config.category || 'general';
+  document.getElementById('push-cat-select').value = config.pushCategory || config.category || 'general';
   document.getElementById('kw-input').value = config.keywords || '';
   document.getElementById('exkw-input').value = config.excludeKeywords || '';
   document.getElementById('max-input').value = config.maxItems || 20;
@@ -828,7 +830,8 @@ function selectCategory(cat) {
 async function saveConfig() {
   var sources = Array.from(document.querySelectorAll('#src-grid input:checked')).map(function(el){return el.value;});
   var newConf = {
-    category: document.getElementById('cat-select').value,
+    category: currentCategory,  // 页面浏览分类，跟随导航栏点击
+    pushCategory: document.getElementById('push-cat-select').value,  // 推送分类，独立设置
     keywords: document.getElementById('kw-input').value,
     excludeKeywords: document.getElementById('exkw-input').value,
     maxItems: parseInt(document.getElementById('max-input').value) || 20,
@@ -838,7 +841,6 @@ async function saveConfig() {
     sources: sources,
   };
   config = newConf;
-  currentCategory = newConf.category;
   updateNavActive();
   var r = await fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(newConf)});
   var d = await r.json();
@@ -1031,6 +1033,12 @@ initTheme();
 function renderHTML(config, env) {
   const catOptions = Object.entries(CATEGORIES).map(function(e) {
     return '<option value="' + e[0] + '"' + (config.category === e[0] ? ' selected' : '') + '>' + e[1] + '</option>';
+  }).join('');
+
+  // 推送分类下拉选项（独立于页面浏览分类）
+  const pushCat = config.pushCategory || config.category || 'general';
+  const pushCatOptions = Object.entries(CATEGORIES).map(function(e) {
+    return '<option value="' + e[0] + '"' + (pushCat === e[0] ? ' selected' : '') + '>' + e[1] + '</option>';
   }).join('');
   // hourOptions removed - using text input now
 
@@ -1320,8 +1328,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
     '    <div class="settings-title">⚙️ 设置</div>',
 
     '    <div class="form-group">',
-    '      <label class="form-label">新闻分类</label>',
-    '      <select class="form-control" id="cat-select">' + catOptions + '</select>',
+    '      <label class="form-label">推送分类 <small style="color:#94a3b8;font-weight:400">（仅影响推送内容）</small></label>',
+    '      <select class="form-control" id="push-cat-select">' + pushCatOptions + '</select>',
     '    </div>',
 
     '    <div class="form-group">',
