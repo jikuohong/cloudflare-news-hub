@@ -619,6 +619,36 @@ function updateClock() {
 }
 updateClock();
 setInterval(updateClock, 1000);
+
+// ── 深色/浅色模式 ──
+function applyTheme(dark) {
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  var btn = document.getElementById('theme-btn');
+  if (btn) btn.textContent = dark ? '☀️' : '🌙';
+}
+
+function toggleTheme() {
+  var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  var newDark = !isDark;
+  localStorage.setItem('theme', newDark ? 'dark' : 'light');
+  applyTheme(newDark);
+}
+
+function initTheme() {
+  // 优先用用户手动选择，否则跟随系统
+  var saved = localStorage.getItem('theme');
+  if (saved) {
+    applyTheme(saved === 'dark');
+  } else {
+    var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    applyTheme(prefersDark);
+  }
+  // 监听系统主题变化（仅当用户未手动设置时生效）
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
+    if (!localStorage.getItem('theme')) applyTheme(e.matches);
+  });
+}
+initTheme();
 `;
 }
 
@@ -649,6 +679,18 @@ function renderHTML(config) {
   --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
   --shadow-hover: 0 4px 12px rgba(0,0,0,0.12);
   --sidebar-w: 240px;
+}
+[data-theme="dark"] {
+  --bg: #0f1117;
+  --sidebar-bg: #1a1d27;
+  --card-bg: #1e2130;
+  --border: #2d3148;
+  --text: #e8eaf0;
+  --text-secondary: #8b92a9;
+  --accent: #4f8ef7;
+  --accent-light: #1a2540;
+  --shadow: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+  --shadow-hover: 0 4px 12px rgba(0,0,0,0.4);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
@@ -782,6 +824,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
     '    <span class="clock-lunar" id="clock-lunar"></span>',
     '  </div>',
     '  <div class="topbar-right">',
+    '    <button class="topbar-btn" id="theme-btn" onclick="toggleTheme()" title="切换暗色/亮色">🌙</button>',
     '    <button class="topbar-btn" onclick="loadNews()">🔄 刷新</button>',
     '    <button class="topbar-btn primary" onclick="testPush()">📤 推送 TG</button>',
     '  </div>',
