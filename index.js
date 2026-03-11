@@ -279,8 +279,56 @@ async function handleNews(env) {
 }
 
 // ============================================================
-// Telegram 推送
+// 推送渠道
+// 所有 Token/Key 均通过 Cloudflare Worker 环境变量配置：
+//   TG_TOKEN            Telegram Bot Token
+//   TG_CHAT_ID          Telegram Chat ID
+//   FEISHU_WEBHOOK      飞书自定义机器人 Webhook URL
+//   DINGTALK_WEBHOOK    钉钉自定义机器人 Webhook URL
+//   DINGTALK_SECRET     钉钉加签密钥（可选，有加签时填写）
+//   WECOM_WEBHOOK       企业微信机器人 Webhook URL
+//   PUSHPLUS_TOKEN      PushPlus 用户 Token
+//   BARK_URL            Bark 推送 URL，例如 https://api.day.app/your_key
 // ============================================================
+
+// ── 构建纯文本消息（通用） ──────────────────────────────────
+async function buildPlainMessage(env, config) {
+  const pushConfig = { ...config, _maxAgeDays: 1 };
+  const items = await fetchAllNews(pushConfig);
+  if (items.length === 0) throw new Error('没有获取到新闻');
+  const catLabel = CATEGORIES[config.category] || '综合新闻';
+  const now = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+
+  let summary = null;
+  if (config.aiSummary !== false) {
+    summary = await summarizeWithAI(env, items, config);
+  }
+
+  // 纯文本版（用于钉钉 text / 企业微信 text / Bark）
+  let plain = '📰 中文新闻 Hub\n';
+  plain += '🗂 ' + catLabel + ' | 🕐 ' + now + '\n';
+  if (summary) plain += '\n━━━ 🤖 AI 摘要 ━━━\n' + summary + '\n';
+  plain += '\n━━━ 📎 新闻列表 ━━━\n';
+  items.forEach((item, i) => {
+    plain += (i + 1) + '. ' + item.title + '\n   ' + (item.link || '') + '\n';
+  });
+  plain += '\n共 ' + items.length + ' 条';
+
+  // Markdown 版（用于飞书 / 企业微信 markdown / PushPlus）
+  let md = '## 📰 中文新闻 Hub\n';
+  md += '**' + catLabel + '** | ' + now + '\n\n';
+  if (summary) md += '### 🤖 AI 摘要\n' + summary + '\n\n';
+  md += '### 📎 新闻列表\n';
+  items.forEach((item, i) => {
+    const link = item.link ? '[' + item.title + '](' + item.link + ')' : item.title;
+    md += (i + 1) + '. ' + item.flag + ' **' + item.source + '** ' + link + '\n';
+  });
+  md += '\n> 共 ' + items.length + ' 条';
+
+  return { items, plain, md, catLabel, now, summary };
+}
+
+// ── Telegram ────────────────────────────────────────────────
 async function sendToTelegram(env, message) {
   const token = env.TG_TOKEN, chatId = env.TG_CHAT_ID;
   if (!token || !chatId) throw new Error('未配置 TG_TOKEN 或 TG_CHAT_ID');
@@ -294,17 +342,11 @@ async function sendToTelegram(env, message) {
   return data;
 }
 
-async function buildTgMessage(env, config) {
-  const tgConfig = { ...config, _maxAgeDays: 1 };
-  const items = await fetchAllNews(tgConfig);
-  if (items.length === 0) throw new Error('没有获取到新闻');
-  const catLabel = CATEGORIES[config.category] || '综合新闻';
-  const now = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+async function pushTelegram(env, config, payload) {
+  if (!env.TG_TOKEN || !env.TG_CHAT_ID) return { channel: 'Telegram', skipped: true };
+  const { items, summary, catLabel, now } = payload;
   let msg = '📰 <b>中文新闻 Hub</b>\n🗂 ' + escapeTg(catLabel) + ' | 🕐 ' + escapeTg(now) + '\n';
-  if (config.aiSummary !== false) {
-    const summary = await summarizeWithAI(env, items, config);
-    if (summary) msg += '\n━━━━━ 🤖 AI 今日摘要 ━━━━━\n\n' + escapeTg(summary) + '\n';
-  }
+  if (summary) msg += '\n━━━━━ 🤖 AI 今日摘要 ━━━━━\n\n' + escapeTg(summary) + '\n';
   msg += '\n━━━━━ 📎 原文链接 ━━━━━\n\n';
   const grouped = {};
   items.forEach(item => {
@@ -322,7 +364,138 @@ async function buildTgMessage(env, config) {
   }
   msg += '━━━━━━━━━━━━━━━━━━━━\n共 ' + items.length + ' 条';
   await sendToTelegram(env, msg);
-  return items.length;
+  return { channel: 'Telegram', ok: true };
+}
+
+// ── 飞书 ────────────────────────────────────────────────────
+async function pushFeishu(env, config, payload) {
+  const webhook = env.FEISHU_WEBHOOK;
+  if (!webhook) return { channel: '飞书', skipped: true };
+  const { md } = payload;
+  const body = {
+    msg_type: 'interactive',
+    card: {
+      header: { title: { tag: 'plain_text', content: '📰 中文新闻 Hub' }, template: 'blue' },
+      elements: [{ tag: 'markdown', content: md }],
+    },
+  };
+  const resp = await fetch(webhook, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await resp.json();
+  if (data.code !== 0) throw new Error('飞书推送失败: ' + (data.msg || JSON.stringify(data)));
+  return { channel: '飞书', ok: true };
+}
+
+// ── 钉钉 ────────────────────────────────────────────────────
+async function pushDingtalk(env, config, payload) {
+  const webhook = env.DINGTALK_WEBHOOK;
+  if (!webhook) return { channel: '钉钉', skipped: true };
+  const { md, catLabel } = payload;
+  let url = webhook;
+  // 加签支持
+  if (env.DINGTALK_SECRET) {
+    const timestamp = Date.now();
+    const strToSign = timestamp + '\n' + env.DINGTALK_SECRET;
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey('raw', enc.encode(env.DINGTALK_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const sig = await crypto.subtle.sign('HMAC', key, enc.encode(strToSign));
+    const b64 = btoa(String.fromCharCode(...new Uint8Array(sig)));
+    url += '&timestamp=' + timestamp + '&sign=' + encodeURIComponent(b64);
+  }
+  const body = {
+    msgtype: 'markdown',
+    markdown: { title: '📰 中文新闻 Hub - ' + catLabel, text: md },
+  };
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await resp.json();
+  if (data.errcode !== 0) throw new Error('钉钉推送失败: ' + (data.errmsg || JSON.stringify(data)));
+  return { channel: '钉钉', ok: true };
+}
+
+// ── 企业微信 ────────────────────────────────────────────────
+async function pushWecom(env, config, payload) {
+  const webhook = env.WECOM_WEBHOOK;
+  if (!webhook) return { channel: '企业微信', skipped: true };
+  const { md } = payload;
+  const body = { msgtype: 'markdown', markdown: { content: md } };
+  const resp = await fetch(webhook, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await resp.json();
+  if (data.errcode !== 0) throw new Error('企业微信推送失败: ' + (data.errmsg || JSON.stringify(data)));
+  return { channel: '企业微信', ok: true };
+}
+
+// ── PushPlus ─────────────────────────────────────────────────
+async function pushPushPlus(env, config, payload) {
+  const token = env.PUSHPLUS_TOKEN;
+  if (!token) return { channel: 'PushPlus', skipped: true };
+  const { md, catLabel } = payload;
+  const body = {
+    token,
+    title: '📰 中文新闻 Hub - ' + catLabel,
+    content: md,
+    template: 'markdown',
+  };
+  const resp = await fetch('https://www.pushplus.plus/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await resp.json();
+  if (data.code !== 200) throw new Error('PushPlus 推送失败: ' + (data.msg || JSON.stringify(data)));
+  return { channel: 'PushPlus', ok: true };
+}
+
+// ── Bark ─────────────────────────────────────────────────────
+async function pushBark(env, config, payload) {
+  const barkUrl = env.BARK_URL;
+  if (!barkUrl) return { channel: 'Bark', skipped: true };
+  const { plain, catLabel } = payload;
+  // Bark URL 格式: https://api.day.app/your_key/title/body
+  const base = barkUrl.replace(/\/$/, '');
+  const title = encodeURIComponent('📰 中文新闻 Hub - ' + catLabel);
+  const body = encodeURIComponent(plain.slice(0, 1000)); // Bark 有长度限制
+  const resp = await fetch(base + '/' + title + '/' + body + '?group=新闻&icon=https://www.google.com/favicon.ico', {
+    method: 'GET',
+  });
+  const data = await resp.json();
+  if (data.code !== 200) throw new Error('Bark 推送失败: ' + (data.message || JSON.stringify(data)));
+  return { channel: 'Bark', ok: true };
+}
+
+// ── 统一推送入口 ─────────────────────────────────────────────
+async function runAllPush(env, config) {
+  const payload = await buildPlainMessage(env, config);
+
+  const results = await Promise.allSettled([
+    pushTelegram(env, config, payload),
+    pushFeishu(env, config, payload),
+    pushDingtalk(env, config, payload),
+    pushWecom(env, config, payload),
+    pushPushPlus(env, config, payload),
+    pushBark(env, config, payload),
+  ]);
+
+  const summary = results.map((r, i) => {
+    if (r.status === 'fulfilled') {
+      const v = r.value;
+      if (v.skipped) return v.channel + ':未配置';
+      return v.channel + ':✅';
+    }
+    return r.reason?.message || '推送异常';
+  });
+
+  return { count: payload.items.length, summary };
 }
 
 async function runNewsPush(env) {
@@ -330,24 +503,22 @@ async function runNewsPush(env) {
   if (!config.enabled) return;
   const now = new Date();
   const hour = parseInt(now.toLocaleString('en-US', { timeZone: 'Asia/Shanghai', hour: 'numeric', hour12: false }));
-  // 支持多个推送时间，逗号分隔
   const pushHours = String(config.pushHours || config.pushHour || '8')
     .split(/[,，\s]+/).map(h => parseInt(h.trim())).filter(h => !isNaN(h));
   if (!pushHours.includes(hour)) return;
-  // 用 小时 作为当天推送标记，避免同一小时重复推送
   const today = now.toISOString().slice(0, 10);
   const runKey = 'lastRun_' + today + '_' + hour;
   const lastRun = await env.NEWS_CONFIG.get(runKey);
   if (lastRun) return;
-  await buildTgMessage(env, config);
+  await runAllPush(env, config);
   await env.NEWS_CONFIG.put(runKey, '1');
 }
 
 async function handleTestPush(env) {
   try {
     const config = await getConfig(env);
-    const count = await buildTgMessage(env, config);
-    return Response.json({ success: true, message: '推送成功！共发送 ' + count + ' 条新闻' });
+    const { count, summary } = await runAllPush(env, config);
+    return Response.json({ success: true, message: '推送完成！共 ' + count + ' 条\n' + summary.join(' | ') });
   } catch (e) { return Response.json({ success: false, message: e.message }, { status: 500 }); }
 }
 
@@ -736,6 +907,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
 .toggle input:checked + .toggle-slider { background: var(--accent); }
 .toggle input:checked + .toggle-slider::after { transform: translateX(16px); }
 .src-region-label { font-size: 11px; color: var(--text-secondary); font-weight: 600; padding: 6px 2px 3px; text-transform: uppercase; letter-spacing: .04em; }
+.push-channels { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.push-channel-item { display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); }
+.ch-icon { font-size: 15px; flex-shrink: 0; margin-top: 1px; }
+.ch-name { font-size: 12px; font-weight: 600; color: var(--text); }
+.ch-var { font-size: 10px; color: var(--text-secondary); margin-top: 1px; font-family: monospace; word-break: break-all; }
+.push-hint { font-size: 11px; color: var(--text-secondary); line-height: 1.5; padding: 4px 2px 10px; }
 .src-item { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: 12px; color: var(--text-secondary); transition: all .15s; margin-bottom: 1px; }
 .src-item input { display: none; }
 .src-item.active { color: var(--accent); background: var(--accent-light); }
@@ -826,7 +1003,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
     '  <div class="topbar-right">',
     '    <button class="topbar-btn" id="theme-btn" onclick="toggleTheme()" title="切换暗色/亮色">🌙</button>',
     '    <button class="topbar-btn" onclick="loadNews()">🔄 刷新</button>',
-    '    <button class="topbar-btn primary" onclick="testPush()">📤 推送 TG</button>',
+    '    <button class="topbar-btn primary" onclick="testPush()">📤 立即推送</button>',
     '  </div>',
     '</div>',
 
@@ -880,6 +1057,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
 
     '    <div class="settings-title" style="padding-top:14px">📡 新闻来源</div>',
     '    <div id="src-grid"></div>',
+
+    '    <div class="settings-title" style="padding-top:14px">📬 推送渠道</div>',
+    '    <div class="push-channels">',
+    '      <div class="push-channel-item"><span class="ch-icon">✈️</span><div><div class="ch-name">Telegram</div><div class="ch-var">TG_TOKEN · TG_CHAT_ID</div></div></div>',
+    '      <div class="push-channel-item"><span class="ch-icon">🪶</span><div><div class="ch-name">飞书</div><div class="ch-var">FEISHU_WEBHOOK</div></div></div>',
+    '      <div class="push-channel-item"><span class="ch-icon">📎</span><div><div class="ch-name">钉钉</div><div class="ch-var">DINGTALK_WEBHOOK · DINGTALK_SECRET(可选)</div></div></div>',
+    '      <div class="push-channel-item"><span class="ch-icon">💼</span><div><div class="ch-name">企业微信</div><div class="ch-var">WECOM_WEBHOOK</div></div></div>',
+    '      <div class="push-channel-item"><span class="ch-icon">➕</span><div><div class="ch-name">PushPlus</div><div class="ch-var">PUSHPLUS_TOKEN</div></div></div>',
+    '      <div class="push-channel-item"><span class="ch-icon">🔔</span><div><div class="ch-name">Bark</div><div class="ch-var">BARK_URL</div></div></div>',
+    '    </div>',
+    '    <p class="push-hint">在 Cloudflare Worker → Settings → Variables 中配置对应变量，已配置渠道将自动推送。</p>',
 
     '    <button class="save-btn" onclick="saveConfig()">💾 保存配置</button>',
     '  </div>',
