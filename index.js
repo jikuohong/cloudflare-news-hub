@@ -251,12 +251,29 @@ async function summarizeWithAI(env, items, config) {
 async function handleNews(env) {
   try {
     const config = await getConfig(env);
-    // 页面展示用更大条数，TG推送保持 maxItems
-    // 页面展示：清空关键词过滤，抓取所有新闻（关键词过滤仅影响TG推送）
     const webConfig = { ...config, maxItems: 60, keywords: '', excludeKeywords: '' };
     const items = await fetchAllNews(webConfig);
+
+    // AI摘要缓存：同一小时内只生成一次，节省 Workers AI 额度
     let summary = null;
-    if (config.aiSummary !== false) summary = await summarizeWithAI(env, items, config);
+    if (config.aiSummary !== false) {
+      const cacheKey = 'summary_cache_' + config.category + '_' + new Date().toISOString().slice(0, 13); // 精确到小时
+      try {
+        const cached = await env.NEWS_CONFIG.get(cacheKey);
+        if (cached) {
+          summary = cached;
+        } else {
+          summary = await summarizeWithAI(env, items, config);
+          if (summary) {
+            await env.NEWS_CONFIG.put(cacheKey, summary, { expirationTtl: 86400 }); // 保留24小时后自动删除，key按小时区分
+          }
+        }
+      } catch (e) {
+        // 缓存读写失败则直接生成
+        summary = await summarizeWithAI(env, items, config);
+      }
+    }
+
     return Response.json({ success: true, items, summary, category: CATEGORIES[config.category] || '综合新闻' });
   } catch (e) { return Response.json({ success: false, message: e.message }, { status: 500 }); }
 }
