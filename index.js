@@ -10,7 +10,7 @@ const DEFAULT_CONFIG = {
   pushHours: '8,12,16,20',
   enabled: true,
   aiSummary: true,
-  sources: ['rfa', 'voachinese', 'bbc_chinese', 'bbc_trad', 'hk01', 'mingpao', 'orientaldaily', 'appledaily_tw', 'udn', 'cna', 'rti', 'initium', 'dwnews', 'googlezh'],
+  sources: ['rfa', 'voachinese', 'bbc_chinese', 'bbc_trad', 'hk01', 'mingpao', 'orientaldaily', 'singtao', 'hkej', 'appledaily_tw', 'udn', 'cna', 'rti', 'storm', 'thenewslens', 'ettoday', 'setn', 'initium', 'dwnews', 'chosun', 'zaobao', 'duowei', 'googlezh'],
 };
 
 const CATEGORIES = {
@@ -40,6 +40,14 @@ const NEWS_SOURCES = {
   dwnews:      { label: '德国之声中文', flag: '🇩🇪', region: '海外' },
   googlezh:    { label: 'Google新闻',   flag: '🔍', region: '聚合' },
   chosun:      { label: '朝鲜日报中文', flag: '🇰🇷', region: '海外' },
+  zaobao:      { label: '联合早报',     flag: '🇸🇬', region: '海外' },
+  duowei:      { label: '多维新闻',     flag: '🌐', region: '海外' },
+  singtao:     { label: '星岛日报',     flag: '🇭🇰', region: '香港' },
+  hkej:        { label: '信报',         flag: '🇭🇰', region: '香港' },
+  storm:       { label: '风传媒',       flag: '🇹🇼', region: '台湾' },
+  thenewslens: { label: '关键评论网',   flag: '🇹🇼', region: '台湾' },
+  ettoday:     { label: 'ETtoday',      flag: '🇹🇼', region: '台湾' },
+  setn:        { label: '三立新闻',     flag: '🇹🇼', region: '台湾' },
 };
 
 function getSourceUrl(key, config) {
@@ -59,6 +67,14 @@ function getSourceUrl(key, config) {
     initium:      'https://theinitium.com/feed',
     dwnews:       'https://rss.dw.com/rdf/rss-chi-all',
     chosun:       'https://cnnews.chosun.com/client/news/rss.asp',
+    zaobao:       'https://www.zaobao.com.sg/rss/singapore',
+    duowei:       'https://www.dwnews.com/rss/all',
+    singtao:      'https://std.stheadline.com/rss/newsfeed.xml',
+    hkej:         'https://www1.hkej.com/rss/index.xml',
+    storm:        'https://www.storm.mg/rss',
+    thenewslens:  'https://www.thenewslens.com/rss',
+    ettoday:      'https://feeds.feedburner.com/ettoday/rss',
+    setn:         'https://www.setn.com/rss.aspx',
     googlezh:     (() => {
       if (config.keywords) return 'https://news.google.com/rss/search?q=' + encodeURIComponent(config.keywords) + '&hl=zh-TW&gl=TW&ceid=TW:zh-Hant';
       const catMap = { world:'WORLD', business:'BUSINESS', technology:'TECHNOLOGY', entertainment:'ENTERTAINMENT', sports:'SPORTS', science:'SCIENCE', health:'HEALTH' };
@@ -348,6 +364,14 @@ var SOURCE_LIST = {
   dwnews:{label:'德国之声中文',flag:'🇩🇪',region:'海外'},
   googlezh:{label:'Google新闻',flag:'🔍',region:'聚合'},
   chosun:{label:'朝鲜日报中文',flag:'🇰🇷',region:'海外'},
+  zaobao:{label:'联合早报',flag:'🇸🇬',region:'海外'},
+  duowei:{label:'多维新闻',flag:'🌐',region:'海外'},
+  singtao:{label:'星岛日报',flag:'🇭🇰',region:'香港'},
+  hkej:{label:'信报',flag:'🇭🇰',region:'香港'},
+  storm:{label:'风传媒',flag:'🇹🇼',region:'台湾'},
+  thenewslens:{label:'关键评论网',flag:'🇹🇼',region:'台湾'},
+  ettoday:{label:'ETtoday',flag:'🇹🇼',region:'台湾'},
+  setn:{label:'三立新闻',flag:'🇹🇼',region:'台湾'},
 };
 
 var config = {};
