@@ -222,7 +222,11 @@ function decodeHtml(str) {
   return str.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&nbsp;/g,' ').replace(/&#(\d+);/g,(_,c)=>String.fromCharCode(parseInt(c)));
 }
 function cleanText(str) {
-  return str.replace(/<[^>]*>/g,'').replace(/\s+/g,' ').trim();
+  return str
+    .replace(/<[^>]*>/g, '')          // 去除 HTML 标签
+    .replace(/[\u2610-\u2612\u2614-\u26FF\u2702-\u27B0]/g, '') // 去除杂项符号(☒☐☑等)
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 function escapeTg(str) {
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
