@@ -10,7 +10,7 @@ const DEFAULT_CONFIG = {
   pushHour: '8',
   enabled: true,
   aiSummary: true,
-  sources: ['rfa', 'voachinese', 'bbc_chinese', 'bbc_trad', 'hk01', 'initium'],
+  sources: ['rfa', 'voachinese', 'bbc_chinese', 'bbc_trad', 'hk01', 'mingpao', 'orientaldaily', 'appledaily_tw', 'udn', 'cna', 'rti', 'initium', 'dwnews', 'googlezh'],
 };
 
 const CATEGORIES = {
@@ -52,7 +52,7 @@ function getSourceUrl(key, config) {
     rti:          'https://www.rti.org.tw/feeds/news.xml',
     rfa:          'https://www.rfa.org/mandarin/rss2.xml',
     voachinese:   'https://www.voachinese.com/api/zepqeimovm',
-    bbc_chinese:  'https://feeds.bbci.co.uk/zhongwen/simp/rss.xml',
+    bbc_chinese:  'https://feeds.bbci.co.uk/zhongwen/simp/rss.xml',  // 简体
     bbc_trad:     'https://feeds.bbci.co.uk/zhongwen/trad/rss.xml',
     bbc_trad:     'https://feeds.bbci.co.uk/zhongwen/trad/rss.xml',
     initium:      'https://theinitium.com/feed',
@@ -187,6 +187,12 @@ async function fetchAllNews(config) {
       }
     }
   }
+  // 按发布时间降序排列，无时间的排最后
+  allItems.sort(function(a, b) {
+    var ta = a.pubDate ? new Date(a.pubDate).getTime() : 0;
+    var tb = b.pubDate ? new Date(b.pubDate).getTime() : 0;
+    return tb - ta;
+  });
   return allItems;
 }
 
@@ -228,7 +234,8 @@ async function handleNews(env) {
   try {
     const config = await getConfig(env);
     // 页面展示用更大条数，TG推送保持 maxItems
-    const webConfig = { ...config, maxItems: 50 };
+    // 页面展示：清空关键词过滤，抓取所有新闻（关键词过滤仅影响TG推送）
+    const webConfig = { ...config, maxItems: 60, keywords: '', excludeKeywords: '' };
     const items = await fetchAllNews(webConfig);
     let summary = null;
     if (config.aiSummary !== false) summary = await summarizeWithAI(env, items, config);
@@ -758,12 +765,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
     '    </div>',
 
     '    <div class="form-group">',
-    '      <label class="form-label">包含关键词</label>',
+    '      <label class="form-label">包含关键词 <small style="color:#94a3b8;font-weight:400">（仅影响TG推送）</small></label>',
     '      <input class="form-control" type="text" id="kw-input" value="' + config.keywords + '" placeholder="逗号分隔">',
     '    </div>',
 
     '    <div class="form-group">',
-    '      <label class="form-label">排除关键词</label>',
+    '      <label class="form-label">排除关键词 <small style="color:#94a3b8;font-weight:400">（仅影响TG推送）</small></label>',
     '      <input class="form-control" type="text" id="exkw-input" value="' + config.excludeKeywords + '" placeholder="逗号分隔">',
     '    </div>',
 
