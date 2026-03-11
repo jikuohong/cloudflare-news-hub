@@ -510,7 +510,7 @@ function renderHTML(config) {
     if (data.items.length === 0) { list.innerHTML = '<p style="color:#94a3b8">没有获取到新闻</p>'; return; }
     let html = '';
     if (data.summary) {
-      html += '<div class="ai-summary"><div class="ai-label">🤖 AI 今日摘要</div>' + data.summary.replace(/\n/g, '<br>') + '</div>';
+      html += '<div class="ai-summary"><div class="ai-label">🤖 AI 今日摘要</div>' + data.summary.split('\n').join('<br>') + '</div>';
     }
     html += data.items.map((item, i) =>
       '<div class="preview-item">' +
