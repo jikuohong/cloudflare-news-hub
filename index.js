@@ -257,7 +257,6 @@ async function formatMessage(items, config, env) {
   let msg = `📰 <b>Cloudflare News Hub</b>\n`;
   msg += `🗂 ${catLabel} | 🕐 ${now}\n`;
 
-  // AI 摘要部分
   if (config.aiSummary !== false) {
     const summary = await summarizeWithAI(env, items, config);
     if (summary) {
@@ -266,10 +265,8 @@ async function formatMessage(items, config, env) {
     }
   }
 
-  // 原文链接列表
   msg += `\n━━━━━ 📎 原文链接 ━━━━━\n\n`;
 
-  // 按来源分组
   const grouped = {};
   items.forEach(item => {
     if (!grouped[item.source]) grouped[item.source] = { flag: item.flag, items: [] };
@@ -458,64 +455,71 @@ function renderHTML(config) {
 
 </div>
 <script>
-  document.getElementById('enabled').addEventListener('change',function(){
-    document.getElementById('enabledLabel').textContent=this.checked?'已启用':'已停用';
+  document.getElementById('enabled').addEventListener('change', function() {
+    document.getElementById('enabledLabel').textContent = this.checked ? '已启用' : '已停用';
   });
-  document.getElementById('aiSummary').addEventListener('change',function(){
-    document.getElementById('aiSummaryLabel').textContent=this.checked?'已启用':'已停用';
+  document.getElementById('aiSummary').addEventListener('change', function() {
+    document.getElementById('aiSummaryLabel').textContent = this.checked ? '已启用' : '已停用';
   });
-  function showAlert(msg,type){
-    const el=document.getElementById('alert');
-    el.className='alert alert-'+type;el.textContent=msg;el.style.display='block';
-    setTimeout(()=>el.style.display='none',6000);
+
+  function showAlert(msg, type) {
+    const el = document.getElementById('alert');
+    el.className = 'alert alert-' + type;
+    el.textContent = msg;
+    el.style.display = 'block';
+    setTimeout(() => el.style.display = 'none', 6000);
   }
-  function getSelectedSources(){
-    return [...document.querySelectorAll('input[name=sources]:checked')].map(el=>el.value);
+
+  function getSelectedSources() {
+    return [...document.querySelectorAll('input[name=sources]:checked')].map(el => el.value);
   }
-  async function saveConfig(){
-    const config={
-      language:document.getElementById('language').value,
-      region:document.getElementById('region').value,
-      category:document.getElementById('category').value,
-      keywords:document.getElementById('keywords').value,
-      excludeKeywords:document.getElementById('excludeKeywords').value,
-      maxItems:parseInt(document.getElementById('maxItems').value),
-      pushHour:document.getElementById('pushHour').value,
-      enabled:document.getElementById('enabled').checked,
-      aiSummary:document.getElementById('aiSummary').checked,
-      sources:getSelectedSources(),
+
+  window.saveConfig = async function() {
+    const config = {
+      language: document.getElementById('language').value,
+      region: document.getElementById('region').value,
+      category: document.getElementById('category').value,
+      keywords: document.getElementById('keywords').value,
+      excludeKeywords: document.getElementById('excludeKeywords').value,
+      maxItems: parseInt(document.getElementById('maxItems').value),
+      pushHour: document.getElementById('pushHour').value,
+      enabled: document.getElementById('enabled').checked,
+      aiSummary: document.getElementById('aiSummary').checked,
+      sources: getSelectedSources(),
     };
-    const resp=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(config)});
-    const data=await resp.json();
-    showAlert(data.message,data.success?'success':'error');
-  }
-  async function TestPush(){
-    showAlert('正在生成 AI 摘要并推送，请稍候（约10-20秒）...','success');
-    const resp=await fetch('/api/test',{method:'POST'});
-    const data=await resp.json();
-    showAlert(data.message,data.success?'success':'error');
-  }
-  async function previewNews(){
-    const card=document.getElementById('previewCard');
-    const list=document.getElementById('previewList');
-    card.style.display='block';
-    list.innerHTML='<p style="color:#94a3b8">🤖 正在抓取新闻并生成 AI 摘要，请稍候...</p>';
-    const resp=await fetch('/api/preview');
-    const data=await resp.json();
-    if(!data.success){list.innerHTML='<p style="color:#f87171">'+data.message+'</p>';return;}
-    if(data.items.length===0){list.innerHTML='<p style="color:#94a3b8">没有获取到新闻</p>';return;}
-    let html='';
-    if(data.summary){
-      html+='<div class="ai-summary"><div class="ai-label">🤖 AI 今日摘要</div>'+data.summary.replace(/\n/g,'<br>')+'</div>';
+    const resp = await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
+    const data = await resp.json();
+    showAlert(data.message, data.success ? 'success' : 'error');
+  };
+
+  window.testPush = async function() {
+    showAlert('正在生成 AI 摘要并推送，请稍候（约10-20秒）...', 'success');
+    const resp = await fetch('/api/test', { method: 'POST' });
+    const data = await resp.json();
+    showAlert(data.message, data.success ? 'success' : 'error');
+  };
+
+  window.previewNews = async function() {
+    const card = document.getElementById('previewCard');
+    const list = document.getElementById('previewList');
+    card.style.display = 'block';
+    list.innerHTML = '<p style="color:#94a3b8">🤖 正在抓取新闻并生成 AI 摘要，请稍候...</p>';
+    const resp = await fetch('/api/preview');
+    const data = await resp.json();
+    if (!data.success) { list.innerHTML = '<p style="color:#f87171">' + data.message + '</p>'; return; }
+    if (data.items.length === 0) { list.innerHTML = '<p style="color:#94a3b8">没有获取到新闻</p>'; return; }
+    let html = '';
+    if (data.summary) {
+      html += '<div class="ai-summary"><div class="ai-label">🤖 AI 今日摘要</div>' + data.summary.replace(/\n/g, '<br>') + '</div>';
     }
-    html+=data.items.map((item,i)=>
-      '<div class="preview-item">'+
-      '<span class="src-tag">'+item.flag+' '+item.source+'</span>'+
-      '<a href="'+item.link+'" target="_blank">'+(i+1)+'. '+item.title+'</a>'+
+    html += data.items.map((item, i) =>
+      '<div class="preview-item">' +
+      '<span class="src-tag">' + item.flag + ' ' + item.source + '</span>' +
+      '<a href="' + item.link + '" target="_blank">' + (i + 1) + '. ' + item.title + '</a>' +
       '</div>'
     ).join('');
-    list.innerHTML=html;
-  }
+    list.innerHTML = html;
+  };
 </script>
 </body>
 </html>`;
