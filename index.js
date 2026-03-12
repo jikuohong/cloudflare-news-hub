@@ -10,7 +10,7 @@ var DEFAULT_CONFIG = {
   keywords: "",
   excludeKeywords: "",
   maxItems: 20,
-  pushHours: "8,12,16,20",
+  pushHours: "8:00,12:00,16:00,20:00",
   enabled: true,
   aiSummary: true,
   sources: ["rfa", "voachinese", "bbc_chinese", "bbc_trad", "hk01", "mingpao", "orientaldaily", "singtao", "hkej", "appledaily_tw", "udn", "cna", "rti", "storm", "thenewslens", "ettoday", "setn", "initium", "dwnews", "chosun", "zaobao", "duowei", "googlezh"],
@@ -19,8 +19,8 @@ var DEFAULT_CONFIG = {
   // 天气推送城市（空则不推送），支持中英文城市名
   weatherEnabled: true,
   // 天气推送开关
-  weatherHours: "7"
-  // 天气推送时间（北京时间，逗号分隔，同新闻推送格式）
+  weatherHours: "7:30"
+  // 天气推送时间（北京时间，逗号分隔，支持 HH:MM 格式）
 };
 var CATEGORIES = {
   // ── 综合 ──
@@ -1196,33 +1196,47 @@ async function runNewsPush(env) {
     }
   } catch {
   }
-  const weatherHours = String(config.weatherHours || "7").split(/[,，\s]+/).map((h) => parseInt(h.trim())).filter((h) => !isNaN(h));
-  if (weatherHours.includes(hour)) {
-    const weatherRunKey = "weather_lastRun_" + today + "_" + hour;
-    const weatherLastRun = await env.NEWS_CONFIG.get(weatherRunKey).catch(() => null);
-    if (!weatherLastRun) {
-      await runWeatherPush(env, config);
-      await env.NEWS_CONFIG.put(weatherRunKey, "1", { expirationTtl: 86400 }).catch(() => {});
+  // 解析时间字符串，支持 "8:00" 或 "8" 格式
+  function parseTimeSlots(str, defaultVal) {
+    return String(str || defaultVal).split(/[,，\s]+/).map((t) => {
+      t = t.trim();
+      if (t.includes(":")) {
+        const [h, m] = t.split(":").map(Number);
+        return { h, m: isNaN(m) ? 0 : m };
+      }
+      const h = parseInt(t);
+      return isNaN(h) ? null : { h, m: 0 };
+    }).filter(Boolean);
+  }
+  const today = now.toISOString().slice(0, 10);
+  // ── 天气推送 ──
+  const weatherSlots = parseTimeSlots(config.weatherHours, "7:30");
+  for (const slot of weatherSlots) {
+    if (slot.h === hour && Math.abs(slot.m - minute) <= 2) {
+      const weatherRunKey = "weather_lastRun_" + today + "_" + slot.h + "_" + slot.m;
+      const weatherLastRun = await env.NEWS_CONFIG.get(weatherRunKey).catch(() => null);
+      if (!weatherLastRun) {
+        await runWeatherPush(env, config);
+        await env.NEWS_CONFIG.put(weatherRunKey, "1", { expirationTtl: 86400 }).catch(() => {});
+      }
     }
   }
   if (!config.enabled)
     return;
-  const pushHours = String(config.pushHours || config.pushHour || "8").split(/[,，\s]+/).map((h) => parseInt(h.trim())).filter((h) => !isNaN(h));
-  const today = now.toISOString().slice(0, 10);
-  const runKey = "lastRun_" + today + "_" + hour;
+  // ── 新闻推送 ──
+  const pushSlots = parseTimeSlots(config.pushHours || config.pushHour, "8:00");
   let failedRaw = null;
   try {
     failedRaw = await env.NEWS_CONFIG.get("push_failed_channels");
-  } catch {
-  }
+  } catch {}
   if (failedRaw) {
     await runAllPush(env, config, { isRetry: true });
   }
-  if (!pushHours.includes(hour))
-    return;
+  const matchedSlot = pushSlots.find((s) => s.h === hour && Math.abs(s.m - minute) <= 2);
+  if (!matchedSlot) return;
+  const runKey = "lastRun_" + today + "_" + matchedSlot.h + "_" + matchedSlot.m;
   const lastRun = await env.NEWS_CONFIG.get(runKey);
-  if (lastRun)
-    return;
+  if (lastRun) return;
   await runAllPush(env, config);
   await env.NEWS_CONFIG.put(runKey, "1");
 }
@@ -1333,11 +1347,11 @@ function applyConfigToUI() {
   document.getElementById('kw-input').value = config.keywords || '';
   document.getElementById('exkw-input').value = config.excludeKeywords || '';
   document.getElementById('max-input').value = config.maxItems || 20;
-  document.getElementById('hour-input').value = config.pushHours || config.pushHour || '8,12,16,20';
+  document.getElementById('hour-input').value = config.pushHours || config.pushHour || '8:00,12:00,16:00,20:00';
   document.getElementById('enabled-toggle').checked = config.enabled !== false;
   document.getElementById('ai-toggle').checked = config.aiSummary !== false;
   document.getElementById('weather-city-input').value = config.weatherCity || '';
-  document.getElementById('weather-hours-input').value = config.weatherHours || '7';
+  document.getElementById('weather-hours-input').value = config.weatherHours || '7:30';
   document.getElementById('weather-enabled-toggle').checked = config.weatherEnabled !== false;
   currentCategory = config.category || 'general';
   renderSourceGrid(config.sources || []);
@@ -2144,7 +2158,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
     '          <div class="weather-section-title">\u2601\uFE0F \u5929\u6C14\u63A8\u9001</div>',
     '          <div class="form-group" style="margin-bottom:6px">',
     '            <label class="form-label">\u63A8\u9001\u65F6\u95F4\uFF08\u5317\u4EAC\u65F6\u95F4\uFF0C\u9017\u53F7\u5206\u9694\uFF09</label>',
-    '            <input class="form-control" type="text" id="weather-hours-input" placeholder="\u4F8B\u5982: 7,8" value="7">',
+    '            <input class="form-control" type="text" id="weather-hours-input" placeholder="\u4F8B\u5982: 7:30,17:00" value="7:30">',
     '          </div>',
     '          <div class="form-group" style="margin-bottom:6px">',
     '            <label class="form-label">\u57CE\u5E02\u540D\u79F0 <small style="color:#94a3b8;font-weight:400">\u4E2D\u6587\u6216\u82F1\u6587\u5747\u53EF</small></label>',
