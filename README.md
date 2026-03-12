@@ -10,7 +10,7 @@
 ![Push Channels](https://img.shields.io/badge/推送渠道-9个-purple)
 ![AI Powered](https://img.shields.io/badge/AI-Llama_3.1-orange)
 
-**[部署步骤](#-部署步骤) · [推送渠道](#-推送渠道配置) · [环境变量](#-环境变量一览) · [常见问题](#-常见问题)**
+**[部署步骤](#-部署步骤) · [推送渠道](#-推送渠道配置) · [天气推送](#-天气推送) · [环境变量](#-环境变量一览) · [常见问题](#-常见问题)**
 
 </div>
 
@@ -25,8 +25,9 @@
 | 🌐 | **23 家媒体** | 港台海外主流中文媒体，RSS 实时聚合 |
 | 📬 | **9 个推送渠道** | Telegram / 飞书 / 钉钉 / 企业微信 / PushPlus / Bark / WxPusher / ntfy / Gotify |
 | 🤖 | **AI 摘要** | Workers AI（Llama 3.1）每日要点提炼，按小时缓存 |
+| 🌤 | **早安天气** | 每天 7:30 推送城市天气，含逐时预报与未来两天，无需 API Key |
 | 🔁 | **智能去重** | Jaccard 相似度算法 + 跨批次历史去重，24 小时内每条新闻最多推一次 |
-| 🔄 | **失败重试** | 推送失败渠道自动记录，下次触发时补发 |
+| 🔄 | **失败重试** | 推送失败渠道自动记录，下次触发时补发，直到成功为止 |
 | 🌙 | **深色模式** | 自动跟随系统，支持手动切换 |
 
 ---
@@ -51,10 +52,10 @@
 前往 Worker → **Triggers → Cron Triggers**，添加：
 
 ```
-0 * * * *
+*/30 * * * *
 ```
 
-> 每小时整点触发一次，系统根据你在侧边栏设置的推送时间决定是否实际推送，同一小时内不会重复推送。
+> 每 30 分钟触发一次。系统根据当前时间决定执行内容：7:30 推送天气，配置的整点推送新闻，其余时间仅检查失败重试，几乎不消耗资源。
 
 ---
 
@@ -107,14 +108,14 @@
 | 变量名 | 是否必填 | 说明 |
 |--------|----------|------|
 | `DINGTALK_WEBHOOK` | ✅ 必填 | 自定义机器人 Webhook URL |
-| `DINGTALK_SECRET` | 可选 | 加签密钥（启用加签安全设置时填写） |
+| `DINGTALK_SECRET` | 可选 | 加签密钥（启用加签安全设置时填写，以 `SEC` 开头） |
 
 <details>
 <summary>获取方式</summary>
 
 钉钉群 → 「智能群助手」→「添加机器人」→「自定义」→ 安全设置选「加签」→ 复制密钥和 Webhook URL
 
-> ⚠️ Webhook URL 中必须包含 `access_token` 参数。加签密钥使用 HMAC-SHA256，系统自动拼接 `timestamp` 和 `sign`。
+> ⚠️ 加签密钥格式为 `SECxxxxxxxx` 开头的长字符串，不是数字。Webhook URL 中必须包含 `access_token` 参数。
 
 </details>
 
@@ -188,11 +189,11 @@ App Store 下载 [Bark](https://apps.apple.com/app/bark-customed-notifications/i
 
 **自托管服务器：**
 ```
-NTFY_URL = https://ntfy.example.com/your_topic
+NTFY_URL   = https://ntfy.example.com/your_topic
 NTFY_TOKEN = your_access_token   # 仅在服务端配置了认证时需要填写
 ```
 
-> 💡 ntfy 完全开源，支持 Android / iOS / Web，无需账号，自托管友好。消息以纯文本格式发送（截取前 4000 字符）。
+> 💡 ntfy 完全开源，支持 Android / iOS / Web，无需账号，自托管友好。
 
 </details>
 
@@ -212,16 +213,41 @@ NTFY_TOKEN = your_access_token   # 仅在服务端配置了认证时需要填写
 2. 在 Gotify 后台 → **Apps** → 创建新应用 → 复制 Token
 3. 填入 `GOTIFY_URL`（服务器地址，不含路径）和 `GOTIFY_TOKEN`
 
-```
-GOTIFY_URL   = https://gotify.example.com
-GOTIFY_TOKEN = AbCdEfGhIjKlMnOp
-```
-
-消息以 **Markdown 格式**发送（`priority: 5`），客户端支持 Android / Web，iOS 需借助 [Gotify-APNS](https://github.com/gotify/server/issues/47) 中转。
+消息以 **Markdown 格式**发送（`priority: 5`），客户端支持 Android / Web。
 
 > ⚠️ Gotify 为**自托管**服务，需要自行部署服务端，不提供公共云服务。
 
 </details>
+
+---
+
+## 🌤 天气推送
+
+每天北京时间 **7:30** 自动推送城市天气，所有已配置渠道同步接收。
+
+### 配置方式
+
+侧边栏 → **⚙️ 推送设置** → 底部天气区域：
+
+1. 填写城市名称（支持中英文，如 `北京`、`Shanghai`、`Hong Kong`）
+2. 开启「启用天气推送」开关
+3. 点击 **💾 保存配置**
+4. 可点击 **⛅ 测试天气推送** 立即验证
+
+### 推送内容
+
+| 内容 | 说明 |
+|------|------|
+| 🌡 当前天气 | 天气状况、气温/体感温度、今日高低温 |
+| 💧 气象指标 | 湿度、风速等级、能见度、紫外线指数 |
+| ⏰ 今日时段 | 每 3 小时一段（共 8 段），含降雨概率 |
+| 📅 未来预报 | 明日 + 后天天气及温度区间 |
+
+> 数据来自 [wttr.in](https://wttr.in)，**完全免费，无需 API Key**，支持全球城市。
+
+### 失败重试
+
+天气推送与新闻推送采用相同的重试机制：失败渠道写入 KV，每次 Cron 触发时自动补发，直到成功为止。失败记录 TTL 23 小时，不会跨天干扰次日推送。
 
 ---
 
@@ -284,14 +310,6 @@ GOTIFY_TOKEN = AbCdEfGhIjKlMnOp
 
 将标题拆解为字符 bigram（连续 2 字符），计算两个标题集合的 Jaccard 系数。相似度 ≥ **0.55** 视为同一事件，同批次内自动过滤冗余报道。
 
-**示例：**
-```
-❌ 台湾总统宣布新经济政策，将加大科技投入   （联合报）
-✅ 赖清德今日宣布科技经济政策，扩大投资       （中央社）→ 保留
-
-Jaccard 相似度 = 0.62 > 0.55，自动去重
-```
-
 </details>
 
 <details>
@@ -325,7 +343,7 @@ Telegram 单消息上限 4096 字符。系统自动按换行切分为多段（�
 <details>
 <summary><b>⑥ 推送失败自动重试</b></summary>
 
-推送失败的渠道写入 KV（`push_failed_channels`，TTL 2 小时）。下一个 Cron 触发时先检查失败列表，仅对失败渠道补发，成功后自动清除记录。
+新闻推送和天气推送均支持逐渠道重试。失败渠道写入 KV，每次 Cron 触发时优先检查并补发，全部成功后自动清除记录。新闻失败记录 TTL 2 小时，天气失败记录 TTL 23 小时。
 
 </details>
 
@@ -335,12 +353,14 @@ Telegram 单消息上限 4096 字符。系统自动按换行切分为多段（�
 
 | Key | 用途 | TTL |
 |-----|------|-----|
-| `config` | 用户配置（分类、来源、推送时间等） | 永久 |
+| `config` | 用户配置（分类、来源、推送时间、天气城市等） | 永久 |
 | `pushed_titles_cache` | 已推标题历史（跨批次去重） | 24 小时 |
 | `rss_cache_<source>` | RSS 源原始内容缓存 | 8 分钟 |
 | `summary_cache_<cat>_<hour>` | AI 摘要缓存（按分类+小时） | 24 小时 |
-| `lastRun_<date>_<hour>` | 当天当小时是否已推标记 | 24 小时 |
-| `push_failed_channels` | 上次推送失败的渠道列表 | 2 小时 |
+| `lastRun_<date>_<hour>` | 当天当小时新闻是否已推标记 | 24 小时 |
+| `push_failed_channels` | 新闻推送失败的渠道列表 | 2 小时 |
+| `weather_lastRun_<date>` | 当天天气是否已推标记 | 24 小时 |
+| `weather_failed_channels` | 天气推送失败的渠道列表 | 23 小时 |
 
 ---
 
@@ -381,9 +401,32 @@ Telegram 单消息上限 4096 字符。系统自动按换行切分为多段（�
 </details>
 
 <details>
+<summary><b>钉钉推送失败报 token is not exist？</b></summary>
+
+Webhook URL 中的 `access_token` 已失效。进入钉钉群 → 智能群助手 → 找到机器人 → 重新复制最新的 Webhook 地址，更新 `DINGTALK_WEBHOOK` 变量。
+
+</details>
+
+<details>
 <summary><b>钉钉推送失败报签名错误？</b></summary>
 
-检查 `DINGTALK_SECRET` 是否正确，且 Webhook URL 中已包含 `access_token` 参数。加签计算使用 HMAC-SHA256，系统自动拼接 `timestamp` 和 `sign` 参数。
+检查 `DINGTALK_SECRET` 是否正确，格式应为 `SEC` 开头的长字符串，而不是纯数字。加签计算使用 HMAC-SHA256，系统自动拼接 `timestamp` 和 `sign` 参数。
+
+</details>
+
+<details>
+<summary><b>天气推送城市名填写格式？</b></summary>
+
+支持中英文，例如 `北京`、`上海`、`Hong Kong`、`Singapore`、`New York` 均可。数据来自 wttr.in，可先访问 `https://wttr.in/你的城市名` 确认能正常显示后再填入。
+
+</details>
+
+<details>
+<summary><b>天气推送一直没收到？</b></summary>
+
+1. 确认 Cron 配置为 `*/30 * * * *`（每 30 分钟），而不是 `0 */30 * * *`（每 30 小时）
+2. 确认已在推送设置中填写城市并开启「启用天气推送」
+3. 点击「⛅ 测试天气推送」按钮手动验证
 
 </details>
 
