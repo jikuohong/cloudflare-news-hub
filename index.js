@@ -1,281 +1,295 @@
-// ============================================================
-// Cloudflare News Hub - 中文媒体版 (侧边栏 + 新闻卡片)
-// ============================================================
+var __defProp = Object.defineProperty;
+var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
-const DEFAULT_CONFIG = {
-  category: 'general',            // 页面浏览分类（单选，跟随导航栏）
-  pushCategories: ['general'],     // 推送分类（多选，独立控制）
-  keywords: '',
-  excludeKeywords: '',
+// index.js
+var DEFAULT_CONFIG = {
+  category: "general",
+  // 页面浏览分类（单选，跟随导航栏）
+  pushCategories: ["general"],
+  // 推送分类（多选，独立控制）
+  keywords: "",
+  excludeKeywords: "",
   maxItems: 20,
-  pushHours: '8,12,16,20',
+  pushHours: "8,12,16,20",
   enabled: true,
   aiSummary: true,
-  sources: ['rfa', 'voachinese', 'bbc_chinese', 'bbc_trad', 'hk01', 'mingpao', 'orientaldaily', 'singtao', 'hkej', 'appledaily_tw', 'udn', 'cna', 'rti', 'storm', 'thenewslens', 'ettoday', 'setn', 'initium', 'dwnews', 'chosun', 'zaobao', 'duowei', 'googlezh'],
+  sources: ["rfa", "voachinese", "bbc_chinese", "bbc_trad", "hk01", "mingpao", "orientaldaily", "singtao", "hkej", "appledaily_tw", "udn", "cna", "rti", "storm", "thenewslens", "ettoday", "setn", "initium", "dwnews", "chosun", "zaobao", "duowei", "googlezh"],
   // 天气推送
-  weatherCity: '',                 // 天气推送城市（空则不推送），支持中英文城市名
-  weatherEnabled: true,            // 天气推送开关
+  weatherCity: "",
+  // 天气推送城市（空则不推送），支持中英文城市名
+  weatherEnabled: true
+  // 天气推送开关
 };
-
-const CATEGORIES = {
+var CATEGORIES = {
   // ── 综合 ──
-  general:        { label: '综合新闻',   icon: '📰', group: '综合' },
+  general: { label: "\u7EFC\u5408\u65B0\u95FB", icon: "\u{1F4F0}", group: "\u7EFC\u5408" },
   // ── 时事政治 ──
-  world:          { label: '国际',       icon: '🌍', group: '时事' },
-  china:          { label: '两岸三地',   icon: '🇨🇳', group: '时事' },
-  politics:       { label: '政治',       icon: '🏛️', group: '时事' },
-  society:        { label: '社会',       icon: '👥', group: '时事' },
+  world: { label: "\u56FD\u9645", icon: "\u{1F30D}", group: "\u65F6\u4E8B" },
+  china: { label: "\u4E24\u5CB8\u4E09\u5730", icon: "\u{1F1E8}\u{1F1F3}", group: "\u65F6\u4E8B" },
+  politics: { label: "\u653F\u6CBB", icon: "\u{1F3DB}\uFE0F", group: "\u65F6\u4E8B" },
+  society: { label: "\u793E\u4F1A", icon: "\u{1F465}", group: "\u65F6\u4E8B" },
   // ── 财经 ──
-  business:       { label: '财经',       icon: '💹', group: '财经' },
-  markets:        { label: '股市',       icon: '📈', group: '财经' },
-  property:       { label: '房产',       icon: '🏠', group: '财经' },
+  business: { label: "\u8D22\u7ECF", icon: "\u{1F4B9}", group: "\u8D22\u7ECF" },
+  markets: { label: "\u80A1\u5E02", icon: "\u{1F4C8}", group: "\u8D22\u7ECF" },
+  property: { label: "\u623F\u4EA7", icon: "\u{1F3E0}", group: "\u8D22\u7ECF" },
   // ── 科技 ──
-  technology:     { label: '科技',       icon: '💻', group: '科技' },
-  ai:             { label: 'AI 人工智能', icon: '🤖', group: '科技' },
+  technology: { label: "\u79D1\u6280", icon: "\u{1F4BB}", group: "\u79D1\u6280" },
+  ai: { label: "AI \u4EBA\u5DE5\u667A\u80FD", icon: "\u{1F916}", group: "\u79D1\u6280" },
   // ── 生活 ──
-  health:         { label: '健康医疗',   icon: '❤️', group: '生活' },
-  entertainment:  { label: '娱乐',       icon: '🎬', group: '生活' },
-  sports:         { label: '体育',       icon: '⚽', group: '生活' },
-  science:        { label: '科学',       icon: '🔬', group: '生活' },
-  culture:        { label: '文化艺术',   icon: '🎨', group: '生活' },
-  travel:         { label: '旅游',       icon: '✈️', group: '生活' },
+  health: { label: "\u5065\u5EB7\u533B\u7597", icon: "\u2764\uFE0F", group: "\u751F\u6D3B" },
+  entertainment: { label: "\u5A31\u4E50", icon: "\u{1F3AC}", group: "\u751F\u6D3B" },
+  sports: { label: "\u4F53\u80B2", icon: "\u26BD", group: "\u751F\u6D3B" },
+  science: { label: "\u79D1\u5B66", icon: "\u{1F52C}", group: "\u751F\u6D3B" },
+  culture: { label: "\u6587\u5316\u827A\u672F", icon: "\u{1F3A8}", group: "\u751F\u6D3B" },
+  travel: { label: "\u65C5\u6E38", icon: "\u2708\uFE0F", group: "\u751F\u6D3B" }
 };
-
-const NEWS_SOURCES = {
-  hk01:        { label: '香港01',       flag: '🇭🇰', region: '香港' },
-  mingpao:     { label: '明报',         flag: '🇭🇰', region: '香港' },
-  orientaldaily:{ label: '东方日报',    flag: '🇭🇰', region: '香港' },
-  appledaily_tw:{ label: '自由时报',    flag: '🇹🇼', region: '台湾' },
-  udn:         { label: '联合新闻网',   flag: '🇹🇼', region: '台湾' },
-  cna:         { label: '中央社',       flag: '🇹🇼', region: '台湾' },
-  rti:         { label: '中央广播电台', flag: '🇹🇼', region: '台湾' },
-  rfa:         { label: '自由亚洲电台', flag: '🌏', region: '海外' },
-  voachinese:  { label: '美国之音中文', flag: '🇺🇸', region: '海外' },
-  bbc_chinese: { label: 'BBC中文(简)',   flag: '🇬🇧', region: '海外' },
-  bbc_trad:    { label: 'BBC中文(繁)',   flag: '🇬🇧', region: '海外' },
-  initium:     { label: '端传媒',       flag: '🌐', region: '海外' },
-  dwnews:      { label: '德国之声中文', flag: '🇩🇪', region: '海外' },
-  googlezh:    { label: 'Google新闻',   flag: '🔍', region: '聚合' },
-  chosun:      { label: '朝鲜日报中文', flag: '🇰🇷', region: '海外' },
-  zaobao:      { label: '联合早报',     flag: '🇸🇬', region: '海外' },
-  duowei:      { label: '多维新闻',     flag: '🌐', region: '海外' },
-  singtao:     { label: '星岛日报',     flag: '🇭🇰', region: '香港' },
-  hkej:        { label: '信报',         flag: '🇭🇰', region: '香港' },
-  storm:       { label: '风传媒',       flag: '🇹🇼', region: '台湾' },
-  thenewslens: { label: '关键评论网',   flag: '🇹🇼', region: '台湾' },
-  ettoday:     { label: 'ETtoday',      flag: '🇹🇼', region: '台湾' },
-  setn:        { label: '三立新闻',     flag: '🇹🇼', region: '台湾' },
+var NEWS_SOURCES = {
+  hk01: { label: "\u9999\u6E2F01", flag: "\u{1F1ED}\u{1F1F0}", region: "\u9999\u6E2F" },
+  mingpao: { label: "\u660E\u62A5", flag: "\u{1F1ED}\u{1F1F0}", region: "\u9999\u6E2F" },
+  orientaldaily: { label: "\u4E1C\u65B9\u65E5\u62A5", flag: "\u{1F1ED}\u{1F1F0}", region: "\u9999\u6E2F" },
+  appledaily_tw: { label: "\u81EA\u7531\u65F6\u62A5", flag: "\u{1F1F9}\u{1F1FC}", region: "\u53F0\u6E7E" },
+  udn: { label: "\u8054\u5408\u65B0\u95FB\u7F51", flag: "\u{1F1F9}\u{1F1FC}", region: "\u53F0\u6E7E" },
+  cna: { label: "\u4E2D\u592E\u793E", flag: "\u{1F1F9}\u{1F1FC}", region: "\u53F0\u6E7E" },
+  rti: { label: "\u4E2D\u592E\u5E7F\u64AD\u7535\u53F0", flag: "\u{1F1F9}\u{1F1FC}", region: "\u53F0\u6E7E" },
+  rfa: { label: "\u81EA\u7531\u4E9A\u6D32\u7535\u53F0", flag: "\u{1F30F}", region: "\u6D77\u5916" },
+  voachinese: { label: "\u7F8E\u56FD\u4E4B\u97F3\u4E2D\u6587", flag: "\u{1F1FA}\u{1F1F8}", region: "\u6D77\u5916" },
+  bbc_chinese: { label: "BBC\u4E2D\u6587(\u7B80)", flag: "\u{1F1EC}\u{1F1E7}", region: "\u6D77\u5916" },
+  bbc_trad: { label: "BBC\u4E2D\u6587(\u7E41)", flag: "\u{1F1EC}\u{1F1E7}", region: "\u6D77\u5916" },
+  initium: { label: "\u7AEF\u4F20\u5A92", flag: "\u{1F310}", region: "\u6D77\u5916" },
+  dwnews: { label: "\u5FB7\u56FD\u4E4B\u58F0\u4E2D\u6587", flag: "\u{1F1E9}\u{1F1EA}", region: "\u6D77\u5916" },
+  googlezh: { label: "Google\u65B0\u95FB", flag: "\u{1F50D}", region: "\u805A\u5408" },
+  chosun: { label: "\u671D\u9C9C\u65E5\u62A5\u4E2D\u6587", flag: "\u{1F1F0}\u{1F1F7}", region: "\u6D77\u5916" },
+  zaobao: { label: "\u8054\u5408\u65E9\u62A5", flag: "\u{1F1F8}\u{1F1EC}", region: "\u6D77\u5916" },
+  duowei: { label: "\u591A\u7EF4\u65B0\u95FB", flag: "\u{1F310}", region: "\u6D77\u5916" },
+  singtao: { label: "\u661F\u5C9B\u65E5\u62A5", flag: "\u{1F1ED}\u{1F1F0}", region: "\u9999\u6E2F" },
+  hkej: { label: "\u4FE1\u62A5", flag: "\u{1F1ED}\u{1F1F0}", region: "\u9999\u6E2F" },
+  storm: { label: "\u98CE\u4F20\u5A92", flag: "\u{1F1F9}\u{1F1FC}", region: "\u53F0\u6E7E" },
+  thenewslens: { label: "\u5173\u952E\u8BC4\u8BBA\u7F51", flag: "\u{1F1F9}\u{1F1FC}", region: "\u53F0\u6E7E" },
+  ettoday: { label: "ETtoday", flag: "\u{1F1F9}\u{1F1FC}", region: "\u53F0\u6E7E" },
+  setn: { label: "\u4E09\u7ACB\u65B0\u95FB", flag: "\u{1F1F9}\u{1F1FC}", region: "\u53F0\u6E7E" }
 };
-
 function getSourceUrl(key, config) {
   const urls = {
-    hk01:         'https://www.hk01.com/rss/世界專題',
-    mingpao:      'https://news.mingpao.com/rss/pns/s00001.xml',
-    orientaldaily:'https://orientaldaily.on.cc/rss/news.xml',
-    appledaily_tw:'https://news.ltn.com.tw/rss/all.xml',
-    udn:          'https://udn.com/rssfeed/news/2/6638?ch=news',
-    cna:          'https://www.cna.com.tw/rss/aall.aspx',
-    rti:          'https://www.rti.org.tw/feeds/news.xml',
-    rfa:          'https://www.rfa.org/mandarin/rss2.xml',
-    voachinese:   'https://www.voachinese.com/api/zepqeimovm',
-    bbc_chinese:  'https://feeds.bbci.co.uk/zhongwen/simp/rss.xml',
-    bbc_trad:     'https://feeds.bbci.co.uk/zhongwen/trad/rss.xml',
-    initium:      'https://theinitium.com/feed',
-    dwnews:       'https://rss.dw.com/rdf/rss-chi-all',
-    chosun:       'https://cnnews.chosun.com/client/news/rss.asp',
-    zaobao:       'https://www.zaobao.com.sg/rss/singapore',
-    duowei:       'https://www.dwnews.com/rss/all',
-    singtao:      'https://std.stheadline.com/rss/newsfeed.xml',
-    hkej:         'https://www1.hkej.com/rss/index.xml',
-    storm:        'https://www.storm.mg/rss',
-    thenewslens:  'https://www.thenewslens.com/rss',
-    ettoday:      'https://feeds.feedburner.com/ettoday/rss',
-    setn:         'https://www.setn.com/rss.aspx',
-    googlezh:     (() => {
-      if (config.keywords) return 'https://news.google.com/rss/search?q=' + encodeURIComponent(config.keywords) + '&hl=zh-TW&gl=TW&ceid=TW:zh-Hant';
+    hk01: "https://www.hk01.com/rss/\u4E16\u754C\u5C08\u984C",
+    mingpao: "https://news.mingpao.com/rss/pns/s00001.xml",
+    orientaldaily: "https://orientaldaily.on.cc/rss/news.xml",
+    appledaily_tw: "https://news.ltn.com.tw/rss/all.xml",
+    udn: "https://udn.com/rssfeed/news/2/6638?ch=news",
+    cna: "https://www.cna.com.tw/rss/aall.aspx",
+    rti: "https://www.rti.org.tw/feeds/news.xml",
+    rfa: "https://www.rfa.org/mandarin/rss2.xml",
+    voachinese: "https://www.voachinese.com/api/zepqeimovm",
+    bbc_chinese: "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml",
+    bbc_trad: "https://feeds.bbci.co.uk/zhongwen/trad/rss.xml",
+    initium: "https://theinitium.com/feed",
+    dwnews: "https://rss.dw.com/rdf/rss-chi-all",
+    chosun: "https://cnnews.chosun.com/client/news/rss.asp",
+    zaobao: "https://www.zaobao.com.sg/rss/singapore",
+    duowei: "https://www.dwnews.com/rss/all",
+    singtao: "https://std.stheadline.com/rss/newsfeed.xml",
+    hkej: "https://www1.hkej.com/rss/index.xml",
+    storm: "https://www.storm.mg/rss",
+    thenewslens: "https://www.thenewslens.com/rss",
+    ettoday: "https://feeds.feedburner.com/ettoday/rss",
+    setn: "https://www.setn.com/rss.aspx",
+    googlezh: (() => {
+      if (config.keywords)
+        return "https://news.google.com/rss/search?q=" + encodeURIComponent(config.keywords) + "&hl=zh-TW&gl=TW&ceid=TW:zh-Hant";
       const catMap = {
-        world:'WORLD', china:'WORLD', politics:'NATION', society:'NATION',
-        business:'BUSINESS', markets:'BUSINESS', property:'BUSINESS',
-        technology:'TECHNOLOGY', ai:'TECHNOLOGY',
-        health:'HEALTH', entertainment:'ENTERTAINMENT',
-        sports:'SPORTS', science:'SCIENCE',
-        culture:'ENTERTAINMENT', travel:'TRAVEL',
+        world: "WORLD",
+        china: "WORLD",
+        politics: "NATION",
+        society: "NATION",
+        business: "BUSINESS",
+        markets: "BUSINESS",
+        property: "BUSINESS",
+        technology: "TECHNOLOGY",
+        ai: "TECHNOLOGY",
+        health: "HEALTH",
+        entertainment: "ENTERTAINMENT",
+        sports: "SPORTS",
+        science: "SCIENCE",
+        culture: "ENTERTAINMENT",
+        travel: "TRAVEL"
       };
       const cat = catMap[config.category];
-      if (cat) return 'https://news.google.com/rss/headlines/section/topic/' + cat + '?hl=zh-TW&gl=TW&ceid=TW:zh-Hant';
-      return 'https://news.google.com/rss?hl=zh-TW&gl=TW&ceid=TW:zh-Hant';
-    })(),
+      if (cat)
+        return "https://news.google.com/rss/headlines/section/topic/" + cat + "?hl=zh-TW&gl=TW&ceid=TW:zh-Hant";
+      return "https://news.google.com/rss?hl=zh-TW&gl=TW&ceid=TW:zh-Hant";
+    })()
   };
   return urls[key] || null;
 }
-
-// ============================================================
-// 主入口
-// ============================================================
-export default {
+__name(getSourceUrl, "getSourceUrl");
+var cloudflare_news_hub_default = {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.pathname === '/api/config' && request.method === 'POST') return handleSaveConfig(request, env);
-    if (url.pathname === '/api/config' && request.method === 'GET')  return handleGetConfig(env);
-    if (url.pathname === '/api/test'   && request.method === 'POST') return handleTestPush(env);
-    if (url.pathname === '/api/weather-test' && request.method === 'POST') return handleTestWeather(env);
-    if (url.pathname === '/api/news'   && request.method === 'GET')  return handleNews(request, env);
-    return new Response(renderHTML(await getConfig(env), env), { headers: { 'Content-Type': 'text/html;charset=UTF-8' } });
+    if (url.pathname === "/api/config" && request.method === "POST")
+      return handleSaveConfig(request, env);
+    if (url.pathname === "/api/config" && request.method === "GET")
+      return handleGetConfig(env);
+    if (url.pathname === "/api/test" && request.method === "POST")
+      return handleTestPush(env);
+    if (url.pathname === "/api/weather-test" && request.method === "POST")
+      return handleTestWeather(env);
+    if (url.pathname === "/api/news" && request.method === "GET")
+      return handleNews(request, env);
+    return new Response(renderHTML(await getConfig(env), env), { headers: { "Content-Type": "text/html;charset=UTF-8" } });
   },
   async scheduled(event, env, ctx) {
     ctx.waitUntil(runNewsPush(env));
-  },
+  }
 };
-
-// ============================================================
-// 配置管理
-// ============================================================
 async function getConfig(env) {
   try {
-    const raw = await env.NEWS_CONFIG.get('config');
+    const raw = await env.NEWS_CONFIG.get("config");
     return raw ? { ...DEFAULT_CONFIG, ...JSON.parse(raw) } : DEFAULT_CONFIG;
-  } catch { return DEFAULT_CONFIG; }
+  } catch {
+    return DEFAULT_CONFIG;
+  }
 }
-async function handleGetConfig(env) { return Response.json(await getConfig(env)); }
+__name(getConfig, "getConfig");
+async function handleGetConfig(env) {
+  return Response.json(await getConfig(env));
+}
+__name(handleGetConfig, "handleGetConfig");
 async function handleSaveConfig(request, env) {
   try {
     const body = await request.json();
-    await env.NEWS_CONFIG.put('config', JSON.stringify({ ...DEFAULT_CONFIG, ...body }));
-    return Response.json({ success: true, message: '配置已保存' });
-  } catch (e) { return Response.json({ success: false, message: e.message }, { status: 500 }); }
+    await env.NEWS_CONFIG.put("config", JSON.stringify({ ...DEFAULT_CONFIG, ...body }));
+    return Response.json({ success: true, message: "\u914D\u7F6E\u5DF2\u4FDD\u5B58" });
+  } catch (e) {
+    return Response.json({ success: false, message: e.message }, { status: 500 });
+  }
 }
-
-// ============================================================
-// 新闻获取
-// ============================================================
-// 新闻获取（优化⑤：RSS 源 KV 缓存 8 分钟）
-// ============================================================
+__name(handleSaveConfig, "handleSaveConfig");
 async function fetchFromSource(sourceKey, config, env) {
   const src = NEWS_SOURCES[sourceKey];
-  if (!src) return [];
+  if (!src)
+    return [];
   try {
     const url = getSourceUrl(sourceKey, config);
-    if (!url) return [];
-
+    if (!url)
+      return [];
     let xml = null;
-
-    // 尝试从 KV 缓存读取 RSS 原始内容
     if (env && env.NEWS_CONFIG) {
-      const cacheKey = 'rss_cache_' + sourceKey;
+      const cacheKey = "rss_cache_" + sourceKey;
       try {
         const cached = await env.NEWS_CONFIG.get(cacheKey);
-        if (cached) xml = cached;
-      } catch {}
-    }
-
-    // 缓存未命中则实际请求
-    if (!xml) {
-      const resp = await fetch(url, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NewsBot/1.0)' },
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!resp.ok) return [];
-      xml = await resp.text();
-      // 写入 KV，TTL 8 分钟
-      if (env && env.NEWS_CONFIG && xml) {
-        try { await env.NEWS_CONFIG.put('rss_cache_' + sourceKey, xml, { expirationTtl: 480 }); } catch {}
+        if (cached)
+          xml = cached;
+      } catch {
       }
     }
-
+    if (!xml) {
+      const resp = await fetch(url, {
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; NewsBot/1.0)" },
+        signal: AbortSignal.timeout(1e4)
+      });
+      if (!resp.ok)
+        return [];
+      xml = await resp.text();
+      if (env && env.NEWS_CONFIG && xml) {
+        try {
+          await env.NEWS_CONFIG.put("rss_cache_" + sourceKey, xml, { expirationTtl: 480 });
+        } catch {
+        }
+      }
+    }
     return parseRss(xml, src.label, src.flag, config, config._maxAgeDays || 7);
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
-
+__name(fetchFromSource, "fetchFromSource");
 function parseRss(xml, sourceName, sourceFlag, config, maxAgeDays) {
   const items = [];
   const now = Date.now();
-  const maxMs = (maxAgeDays || 7) * 24 * 60 * 60 * 1000;
+  const maxMs = (maxAgeDays || 7) * 24 * 60 * 60 * 1e3;
   const itemRegex = /<item>([\s\S]*?)<\/item>/g;
   let match;
   while ((match = itemRegex.exec(xml)) !== null) {
     const block = match[1];
-    const title = cleanText(decodeHtml(extract(block, 'title')));
-    const link  = extract(block, 'link') || extract(block, 'guid');
-    const desc  = cleanText(decodeHtml(extract(block, 'description')));
-    const pubDate = extract(block, 'pubDate');
-    if (!title || title.length < 5) continue;
-    // 时间过滤：有日期的过滤掉超期内容
+    const title = cleanText(decodeHtml(extract(block, "title")));
+    const link = extract(block, "link") || extract(block, "guid");
+    const desc = cleanText(decodeHtml(extract(block, "description")));
+    const pubDate = extract(block, "pubDate");
+    if (!title || title.length < 5)
+      continue;
     if (pubDate) {
       try {
-        // 兼容多种日期格式
         let ts = new Date(pubDate).getTime();
-        // 如果解析失败尝试修正时区写法 e.g. "+0800" -> "+08:00"
         if (isNaN(ts)) {
-          const fixed = pubDate.replace(/([\+\-])(\d{2})(\d{2})$/, '$1$2:$3');
+          const fixed = pubDate.replace(/([\+\-])(\d{2})(\d{2})$/, "$1$2:$3");
           ts = new Date(fixed).getTime();
         }
         if (!isNaN(ts)) {
           const age = now - ts;
-          if (age > maxMs || age < -3600000) continue; // 允许1小时误差
+          if (age > maxMs || age < -36e5)
+            continue;
         }
-        // 无法解析的日期不过滤
-      } catch(e) {}
+      } catch (e) {
+      }
     }
     if (config.keywords) {
       const kws = config.keywords.split(/[,，\s]+/).filter(Boolean);
-      if (!kws.some(k => title.includes(k))) continue;
+      if (!kws.some((k) => title.includes(k)))
+        continue;
     }
     if (config.excludeKeywords) {
       const exkws = config.excludeKeywords.split(/[,，\s]+/).filter(Boolean);
-      if (exkws.some(k => title.includes(k))) continue;
+      if (exkws.some((k) => title.includes(k)))
+        continue;
     }
     items.push({ title, link, desc: desc.slice(0, 120), source: sourceName, flag: sourceFlag, pubDate });
   }
   return items;
 }
-
-// ============================================================
-// 标题相似度去重（优化②）
-// 将标题分解为字符 bigram 集合，计算 Jaccard 相似度
-// 同一事件不同来源标题相似度通常 > 0.5
-// ============================================================
+__name(parseRss, "parseRss");
 function titleTokens(title) {
-  // 去除标点空格，取连续2字符bigram
-  const clean = title.replace(/[\s\u3000\uff0c\u3001\u3002\uff01\uff1f\u300a\u300b「」『』【】〔〕《》""''·—…、，。！？：；]/g, '');
-  const set = new Set();
-  for (let i = 0; i < clean.length - 1; i++) set.add(clean.slice(i, i + 2));
+  const clean = title.replace(/[\s\u3000\uff0c\u3001\u3002\uff01\uff1f\u300a\u300b「」『』【】〔〕《》""''·—…、，。！？：；]/g, "");
+  const set = /* @__PURE__ */ new Set();
+  for (let i = 0; i < clean.length - 1; i++)
+    set.add(clean.slice(i, i + 2));
   return set;
 }
-
+__name(titleTokens, "titleTokens");
 function jaccardSimilarity(setA, setB) {
-  if (setA.size === 0 && setB.size === 0) return 1;
+  if (setA.size === 0 && setB.size === 0)
+    return 1;
   let intersection = 0;
-  for (const t of setA) { if (setB.has(t)) intersection++; }
+  for (const t of setA) {
+    if (setB.has(t))
+      intersection++;
+  }
   return intersection / (setA.size + setB.size - intersection);
 }
-
+__name(jaccardSimilarity, "jaccardSimilarity");
 function isSimilarTitle(title, acceptedTokenSets, threshold = 0.55) {
   const tokens = titleTokens(title);
   for (const set of acceptedTokenSets) {
-    if (jaccardSimilarity(tokens, set) >= threshold) return true;
+    if (jaccardSimilarity(tokens, set) >= threshold)
+      return true;
   }
   return false;
 }
-
+__name(isSimilarTitle, "isSimilarTitle");
 async function fetchAllNews(config, env) {
-  const sources = (config.sources || DEFAULT_CONFIG.sources).filter(s => NEWS_SOURCES[s]);
-
-  // 优化⑤：RSS 源缓存，每个源缓存 8 分钟，减少对外请求
-  const results = await Promise.allSettled(sources.map(s => fetchFromSource(s, config, env)));
-  const buckets = results.filter(r => r.status === 'fulfilled').map(r => r.value);
-
+  const sources = (config.sources || DEFAULT_CONFIG.sources).filter((s) => NEWS_SOURCES[s]);
+  const results = await Promise.allSettled(sources.map((s) => fetchFromSource(s, config, env)));
+  const buckets = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
   const allItems = [];
-  const acceptedTokenSets = []; // 已收录标题的 bigram 集合列表（用于相似度比对）
-
+  const acceptedTokenSets = [];
   let added = true;
   while (added && allItems.length < config.maxItems) {
     added = false;
     for (const bucket of buckets) {
-      if (allItems.length >= config.maxItems) break;
+      if (allItems.length >= config.maxItems)
+        break;
       while (bucket.length > 0) {
         const item = bucket.shift();
-        // 优化②：用 Jaccard 相似度替代简单前缀匹配
-        if (isSimilarTitle(item.title, acceptedTokenSets)) continue;
+        if (isSimilarTitle(item.title, acceptedTokenSets))
+          continue;
         acceptedTokenSets.push(titleTokens(item.title));
         allItems.push(item);
         added = true;
@@ -283,8 +297,6 @@ async function fetchAllNews(config, env) {
       }
     }
   }
-
-  // 按发布时间降序排列，无时间的排最后
   allItems.sort(function(a, b) {
     var ta = a.pubDate ? new Date(a.pubDate).getTime() : 0;
     var tb = b.pubDate ? new Date(b.pubDate).getTime() : 0;
@@ -292,1043 +304,1023 @@ async function fetchAllNews(config, env) {
   });
   return allItems;
 }
-
+__name(fetchAllNews, "fetchAllNews");
 function extract(xml, tag) {
-  const m = xml.match(new RegExp('<' + tag + '[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/' + tag + '>|<' + tag + '[^>]*>([\\s\\S]*?)<\\/' + tag + '>'));
-  return m ? (m[1] || m[2] || '').trim() : '';
+  const m = xml.match(new RegExp("<" + tag + "[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/" + tag + ">|<" + tag + "[^>]*>([\\s\\S]*?)<\\/" + tag + ">"));
+  return m ? (m[1] || m[2] || "").trim() : "";
 }
+__name(extract, "extract");
 function decodeHtml(str) {
-  return str.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&nbsp;/g,' ').replace(/&#(\d+);/g,(_,c)=>String.fromCharCode(parseInt(c)));
+  return str.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, " ").replace(/&#(\d+);/g, (_, c) => String.fromCharCode(parseInt(c)));
 }
+__name(decodeHtml, "decodeHtml");
 function cleanText(str) {
-  return str.replace(/<[^>]*>/g,'').replace(/\s+/g,' ').trim();
+  return str.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
 }
+__name(cleanText, "cleanText");
 function escapeTg(str) {
-  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
-
-// ============================================================
-// AI 摘要（优化④：统一缓存，页面和推送共用同一份）
-// ============================================================
+__name(escapeTg, "escapeTg");
 async function summarizeWithAI(env, items, config) {
-  if (!env.AI) return null;
+  if (!env.AI)
+    return null;
   try {
-    const catLabel = (CATEGORIES[config.category] || {}).label || '综合';
-    const newsList = items.map((item, i) => (i+1) + '. ' + item.title).join('\n');
-    const prompt = '你是专业新闻编辑。以下是今日' + catLabel + '新闻标题，请：\n1. 提炼 3-5 个最重要要点，每点 1-2 句，简洁专业\n2. 最后一句给出今日趋势或值得关注的信号\n\n' + newsList + '\n\n直接输出摘要，不要前缀。';
-    const response = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 600,
+    const catLabel = (CATEGORIES[config.category] || {}).label || "\u7EFC\u5408";
+    const newsList = items.map((item, i) => i + 1 + ". " + item.title).join("\n");
+    const prompt = "\u4F60\u662F\u4E13\u4E1A\u65B0\u95FB\u7F16\u8F91\u3002\u4EE5\u4E0B\u662F\u4ECA\u65E5" + catLabel + "\u65B0\u95FB\u6807\u9898\uFF0C\u8BF7\uFF1A\n1. \u63D0\u70BC 3-5 \u4E2A\u6700\u91CD\u8981\u8981\u70B9\uFF0C\u6BCF\u70B9 1-2 \u53E5\uFF0C\u7B80\u6D01\u4E13\u4E1A\n2. \u6700\u540E\u4E00\u53E5\u7ED9\u51FA\u4ECA\u65E5\u8D8B\u52BF\u6216\u503C\u5F97\u5173\u6CE8\u7684\u4FE1\u53F7\n\n" + newsList + "\n\n\u76F4\u63A5\u8F93\u51FA\u6458\u8981\uFF0C\u4E0D\u8981\u524D\u7F00\u3002";
+    const response = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 600
     });
     return response?.choices?.[0]?.message?.content?.trim() || null;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
-
-// 统一的带缓存摘要获取（精确到小时，页面和推送共享）
+__name(summarizeWithAI, "summarizeWithAI");
 async function getAISummary(env, items, config) {
-  if (config.aiSummary === false) return null;
-  if (!env.NEWS_CONFIG) return await summarizeWithAI(env, items, config);
-  const cacheKey = 'summary_cache_' + config.category + '_' + new Date().toISOString().slice(0, 13);
+  if (config.aiSummary === false)
+    return null;
+  if (!env.NEWS_CONFIG)
+    return await summarizeWithAI(env, items, config);
+  const cacheKey = "summary_cache_" + config.category + "_" + (/* @__PURE__ */ new Date()).toISOString().slice(0, 13);
   try {
     const cached = await env.NEWS_CONFIG.get(cacheKey);
-    if (cached) return cached;
+    if (cached)
+      return cached;
     const summary = await summarizeWithAI(env, items, config);
-    if (summary) await env.NEWS_CONFIG.put(cacheKey, summary, { expirationTtl: 86400 });
+    if (summary)
+      await env.NEWS_CONFIG.put(cacheKey, summary, { expirationTtl: 86400 });
     return summary;
   } catch {
     return await summarizeWithAI(env, items, config);
   }
 }
-
-// ============================================================
-// API: 新闻 + 摘要
-// ============================================================
+__name(getAISummary, "getAISummary");
 async function handleNews(request, env) {
   try {
     const config = await getConfig(env);
     const reqUrl = new URL(request.url);
-    // 支持前端通过 ?cat=xxx 切换分类，不依赖 KV 存储的默认值
-    const cat = reqUrl.searchParams.get('cat');
+    const cat = reqUrl.searchParams.get("cat");
     const webConfig = {
       ...config,
       maxItems: 60,
-      keywords: '',
-      excludeKeywords: '',
-      ...(cat && CATEGORIES[cat] ? { category: cat } : {}),
+      keywords: "",
+      excludeKeywords: "",
+      ...cat && CATEGORIES[cat] ? { category: cat } : {}
     };
     const items = await fetchAllNews(webConfig, env);
     const summary = await getAISummary(env, items, webConfig);
-    return Response.json({ success: true, items, summary, category: (CATEGORIES[webConfig.category] || {}).label || '综合新闻' });
-  } catch (e) { return Response.json({ success: false, message: e.message }, { status: 500 }); }
+    return Response.json({ success: true, items, summary, category: (CATEGORIES[webConfig.category] || {}).label || "\u7EFC\u5408\u65B0\u95FB" });
+  } catch (e) {
+    return Response.json({ success: false, message: e.message }, { status: 500 });
+  }
 }
-
-// ============================================================
-// 推送渠道
-// 所有 Token/Key 均通过 Cloudflare Worker 环境变量配置：
-//   TG_TOKEN            Telegram Bot Token
-//   TG_CHAT_ID          Telegram Chat ID
-//   FEISHU_WEBHOOK      飞书自定义机器人 Webhook URL
-//   DINGTALK_WEBHOOK    钉钉自定义机器人 Webhook URL
-//   DINGTALK_SECRET     钉钉加签密钥（可选，有加签时填写）
-//   WECOM_WEBHOOK       企业微信机器人 Webhook URL
-//   PUSHPLUS_TOKEN      PushPlus 用户 Token
-//   BARK_URL            Bark 推送 URL，例如 https://api.day.app/your_key
-//   WXPUSHER_APP_TOKEN  WxPusher appToken
-//   WXPUSHER_UIDS       接收用户 UID，逗号分隔
-//   WXPUSHER_TOPIC_IDS  主题 ID，逗号分隔（可选）
-//   NTFY_URL            ntfy 推送地址（含 topic），如 https://ntfy.sh/your_topic
-//   NTFY_TOKEN          ntfy 访问令牌（可选，服务端开启认证时填写）
-//   GOTIFY_URL          Gotify 服务地址，如 https://gotify.example.com
-//   GOTIFY_TOKEN        Gotify 应用 Token
-// ============================================================
-
-// ── 优化①：跨批次推送去重 ──────────────────────────────────
-// 将已推送标题的 bigram 集合持久化到 KV，TTL 24小时
-// 下次推送前先过滤掉已推过的内容
-
-const PUSHED_CACHE_KEY = 'pushed_titles_cache';
-
+__name(handleNews, "handleNews");
+var PUSHED_CACHE_KEY = "pushed_titles_cache";
 async function loadPushedTitles(env) {
   try {
     const raw = await env.NEWS_CONFIG.get(PUSHED_CACHE_KEY);
-    return raw ? JSON.parse(raw) : [];  // 返回已推标题数组
-  } catch { return []; }
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
 }
-
+__name(loadPushedTitles, "loadPushedTitles");
 async function savePushedTitles(env, newTitles, existingTitles) {
   try {
-    // 合并新旧，保留最近 500 条，避免 KV value 过大
     const merged = [...existingTitles, ...newTitles].slice(-500);
     await env.NEWS_CONFIG.put(PUSHED_CACHE_KEY, JSON.stringify(merged), { expirationTtl: 86400 });
-  } catch {}
+  } catch {
+  }
 }
-
+__name(savePushedTitles, "savePushedTitles");
 function filterAlreadyPushed(items, pushedTitles) {
-  // 把历史已推标题全部转为 bigram 集合
-  const pushedSets = pushedTitles.map(t => titleTokens(t));
-  return items.filter(item => !isSimilarTitle(item.title, pushedSets));
+  const pushedSets = pushedTitles.map((t) => titleTokens(t));
+  return items.filter((item) => !isSimilarTitle(item.title, pushedSets));
 }
-
-// ── 构建消息 payload（含去重、多分类合并）────────────────────
+__name(filterAlreadyPushed, "filterAlreadyPushed");
 async function buildPlainMessage(env, config) {
-  // 兼容旧版单分类字段
-  const pushCategories = config.pushCategories
-    || (config.pushCategory ? [config.pushCategory] : null)
-    || [config.category || 'general'];
-
-  // 多分类并发抓取，合并去重
+  const pushCategories = config.pushCategories || (config.pushCategory ? [config.pushCategory] : null) || [config.category || "general"];
   const allItemsPerCat = await Promise.all(
-    pushCategories.map(cat => {
+    pushCategories.map((cat) => {
       const catConfig = { ...config, category: cat, _maxAgeDays: 1 };
       return fetchAllNews(catConfig, env);
     })
   );
-
-  // 跨分类合并，用相似度再次去重
   const merged = [];
   const mergedTokenSets = [];
-  for (const items of allItemsPerCat) {
-    for (const item of items) {
+  for (const items2 of allItemsPerCat) {
+    for (const item of items2) {
       if (!isSimilarTitle(item.title, mergedTokenSets)) {
         mergedTokenSets.push(titleTokens(item.title));
         merged.push(item);
       }
     }
   }
-
-  // 按时间降序，截取 maxItems
   merged.sort((a, b) => {
     const ta = a.pubDate ? new Date(a.pubDate).getTime() : 0;
     const tb = b.pubDate ? new Date(b.pubDate).getTime() : 0;
     return tb - ta;
   });
   const allItems = merged.slice(0, config.maxItems || 20);
-
-  if (allItems.length === 0) throw new Error('没有获取到新闻');
-
-  // 跨批次去重
+  if (allItems.length === 0)
+    throw new Error("\u6CA1\u6709\u83B7\u53D6\u5230\u65B0\u95FB");
   const pushedTitles = await loadPushedTitles(env);
   const items = filterAlreadyPushed(allItems, pushedTitles);
-  if (items.length === 0) throw new Error('没有新内容（本批次新闻已全部推送过）');
-
-  // 分类标签：多个用 + 连接
-  const catLabel = pushCategories
-    .map(c => (CATEGORIES[c] || {}).label || c)
-    .join(' + ');
-  const now = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
-
-  // AI 摘要用第一个分类作为上下文
+  if (items.length === 0)
+    throw new Error("\u6CA1\u6709\u65B0\u5185\u5BB9\uFF08\u672C\u6279\u6B21\u65B0\u95FB\u5DF2\u5168\u90E8\u63A8\u9001\u8FC7\uFF09");
+  const catLabel = pushCategories.map((c) => (CATEGORIES[c] || {}).label || c).join(" + ");
+  const now = (/* @__PURE__ */ new Date()).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
   const summaryConfig = { ...config, category: pushCategories[0] };
   const summary = await getAISummary(env, items, summaryConfig);
-
-  // 纯文本版
-  let plain = '📰 中文新闻 Hub\n';
-  plain += '🗂 ' + catLabel + ' | 🕐 ' + now + '\n';
-  if (summary) plain += '\n━━━ 🤖 AI 摘要 ━━━\n' + summary + '\n';
-  plain += '\n━━━ 📎 新闻列表 ━━━\n';
+  let plain = "\u{1F4F0} \u4E2D\u6587\u65B0\u95FB Hub\n";
+  plain += "\u{1F5C2} " + catLabel + " | \u{1F550} " + now + "\n";
+  if (summary)
+    plain += "\n\u2501\u2501\u2501 \u{1F916} AI \u6458\u8981 \u2501\u2501\u2501\n" + summary + "\n";
+  plain += "\n\u2501\u2501\u2501 \u{1F4CE} \u65B0\u95FB\u5217\u8868 \u2501\u2501\u2501\n";
   items.forEach((item, i) => {
-    plain += (i + 1) + '. ' + item.title + '\n   ' + (item.link || '') + '\n';
+    plain += i + 1 + ". " + item.title + "\n   " + (item.link || "") + "\n";
   });
-  plain += '\n共 ' + items.length + ' 条';
-
-  // Markdown 版
-  let md = '## 📰 中文新闻 Hub\n';
-  md += '**' + catLabel + '** | ' + now + '\n\n';
-  if (summary) md += '### 🤖 AI 摘要\n' + summary + '\n\n';
-  md += '### 📎 新闻列表\n';
+  plain += "\n\u5171 " + items.length + " \u6761";
+  let md = "## \u{1F4F0} \u4E2D\u6587\u65B0\u95FB Hub\n";
+  md += "**" + catLabel + "** | " + now + "\n\n";
+  if (summary)
+    md += "### \u{1F916} AI \u6458\u8981\n" + summary + "\n\n";
+  md += "### \u{1F4CE} \u65B0\u95FB\u5217\u8868\n";
   items.forEach((item, i) => {
-    const link = item.link ? '[' + item.title + '](' + item.link + ')' : item.title;
-    md += (i + 1) + '. ' + item.flag + ' **' + item.source + '** ' + link + '\n';
+    const link = item.link ? "[" + item.title + "](" + item.link + ")" : item.title;
+    md += i + 1 + ". " + item.flag + " **" + item.source + "** " + link + "\n";
   });
-  md += '\n> 共 ' + items.length + ' 条';
-
+  md += "\n> \u5171 " + items.length + " \u6761";
   return { items, plain, md, catLabel, now, summary, pushedTitles };
 }
-
-// ── Telegram ────────────────────────────────────────────────
+__name(buildPlainMessage, "buildPlainMessage");
 async function sendToTelegram(env, message) {
   const token = env.TG_TOKEN, chatId = env.TG_CHAT_ID;
-  if (!token || !chatId) throw new Error('未配置 TG_TOKEN 或 TG_CHAT_ID');
-  const resp = await fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'HTML', disable_web_page_preview: true }),
+  if (!token || !chatId)
+    throw new Error("\u672A\u914D\u7F6E TG_TOKEN \u6216 TG_CHAT_ID");
+  const resp = await fetch("https://api.telegram.org/bot" + token + "/sendMessage", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: "HTML", disable_web_page_preview: true })
   });
   const data = await resp.json();
-  if (!data.ok) throw new Error('TG 推送失败: ' + data.description);
+  if (!data.ok)
+    throw new Error("TG \u63A8\u9001\u5931\u8D25: " + data.description);
   return data;
 }
-
-// 优化③：将长消息按 4000 字符拆分，避免 Telegram 4096 字符上限报错
+__name(sendToTelegram, "sendToTelegram");
 async function sendToTelegramSafe(env, message) {
-  const LIMIT = 4000;
+  const LIMIT = 4e3;
   if (message.length <= LIMIT) {
     return sendToTelegram(env, message);
   }
-  // 按换行拆分，贪心合并成不超过 LIMIT 的分段
-  const lines = message.split('\n');
+  const lines = message.split("\n");
   const chunks = [];
-  let current = '';
+  let current = "";
   for (const line of lines) {
-    const next = current ? current + '\n' + line : line;
+    const next = current ? current + "\n" + line : line;
     if (next.length > LIMIT) {
-      if (current) chunks.push(current);
+      if (current)
+        chunks.push(current);
       current = line.length > LIMIT ? line.slice(0, LIMIT) : line;
     } else {
       current = next;
     }
   }
-  if (current) chunks.push(current);
-
+  if (current)
+    chunks.push(current);
   for (let i = 0; i < chunks.length; i++) {
-    const part = chunks.length > 1 ? chunks[i] + '\n\n<i>（' + (i+1) + '/' + chunks.length + '）</i>' : chunks[i];
+    const part = chunks.length > 1 ? chunks[i] + "\n\n<i>\uFF08" + (i + 1) + "/" + chunks.length + "\uFF09</i>" : chunks[i];
     await sendToTelegram(env, part);
-    // 多段之间稍作等待，避免触发 Telegram 速率限制
-    if (i < chunks.length - 1) await new Promise(r => setTimeout(r, 500));
+    if (i < chunks.length - 1)
+      await new Promise((r) => setTimeout(r, 500));
   }
 }
-
+__name(sendToTelegramSafe, "sendToTelegramSafe");
 async function pushTelegram(env, config, payload) {
-  if (!env.TG_TOKEN || !env.TG_CHAT_ID) return { channel: 'Telegram', skipped: true };
+  if (!env.TG_TOKEN || !env.TG_CHAT_ID)
+    return { channel: "Telegram", skipped: true };
   const { items, summary, catLabel, now } = payload;
-  let msg = '📰 <b>中文新闻 Hub</b>\n🗂 ' + escapeTg(catLabel) + ' | 🕐 ' + escapeTg(now) + '\n';
-  if (summary) msg += '\n━━━━━ 🤖 AI 今日摘要 ━━━━━\n\n' + escapeTg(summary) + '\n';
-  msg += '\n━━━━━ 📎 原文链接 ━━━━━\n\n';
+  let msg = "\u{1F4F0} <b>\u4E2D\u6587\u65B0\u95FB Hub</b>\n\u{1F5C2} " + escapeTg(catLabel) + " | \u{1F550} " + escapeTg(now) + "\n";
+  if (summary)
+    msg += "\n\u2501\u2501\u2501\u2501\u2501 \u{1F916} AI \u4ECA\u65E5\u6458\u8981 \u2501\u2501\u2501\u2501\u2501\n\n" + escapeTg(summary) + "\n";
+  msg += "\n\u2501\u2501\u2501\u2501\u2501 \u{1F4CE} \u539F\u6587\u94FE\u63A5 \u2501\u2501\u2501\u2501\u2501\n\n";
   const grouped = {};
-  items.forEach(item => {
-    if (!grouped[item.source]) grouped[item.source] = { flag: item.flag, items: [] };
+  items.forEach((item) => {
+    if (!grouped[item.source])
+      grouped[item.source] = { flag: item.flag, items: [] };
     grouped[item.source].items.push(item);
   });
   let idx = 1;
   for (const [src, group] of Object.entries(grouped)) {
-    msg += group.flag + ' <b>' + escapeTg(src) + '</b>\n';
-    group.items.forEach(item => {
-      msg += idx + '. <a href="' + item.link + '">' + escapeTg(item.title) + '</a>\n';
+    msg += group.flag + " <b>" + escapeTg(src) + "</b>\n";
+    group.items.forEach((item) => {
+      msg += idx + '. <a href="' + item.link + '">' + escapeTg(item.title) + "</a>\n";
       idx++;
     });
-    msg += '\n';
+    msg += "\n";
   }
-  msg += '━━━━━━━━━━━━━━━━━━━━\n共 ' + items.length + ' 条';
-  await sendToTelegramSafe(env, msg);  // 优化③ 分段发送
-  return { channel: 'Telegram', ok: true };
+  msg += "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\u5171 " + items.length + " \u6761";
+  await sendToTelegramSafe(env, msg);
+  return { channel: "Telegram", ok: true };
 }
-
-// ── 飞书 ────────────────────────────────────────────────────
+__name(pushTelegram, "pushTelegram");
 async function pushFeishu(env, config, payload) {
   const webhook = env.FEISHU_WEBHOOK;
-  if (!webhook) return { channel: '飞书', skipped: true };
+  if (!webhook)
+    return { channel: "\u98DE\u4E66", skipped: true };
   const { md } = payload;
   const body = {
-    msg_type: 'interactive',
+    msg_type: "interactive",
     card: {
-      header: { title: { tag: 'plain_text', content: '📰 中文新闻 Hub' }, template: 'blue' },
-      elements: [{ tag: 'markdown', content: md }],
-    },
+      header: { title: { tag: "plain_text", content: "\u{1F4F0} \u4E2D\u6587\u65B0\u95FB Hub" }, template: "blue" },
+      elements: [{ tag: "markdown", content: md }]
+    }
   };
   const resp = await fetch(webhook, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
   });
   const data = await resp.json();
-  if (data.code !== 0) throw new Error('飞书推送失败: ' + (data.msg || JSON.stringify(data)));
-  return { channel: '飞书', ok: true };
+  if (data.code !== 0)
+    throw new Error("\u98DE\u4E66\u63A8\u9001\u5931\u8D25: " + (data.msg || JSON.stringify(data)));
+  return { channel: "\u98DE\u4E66", ok: true };
 }
-
-// ── 钉钉 ────────────────────────────────────────────────────
+__name(pushFeishu, "pushFeishu");
 async function pushDingtalk(env, config, payload) {
   const webhook = env.DINGTALK_WEBHOOK;
-  if (!webhook) return { channel: '钉钉', skipped: true };
+  if (!webhook)
+    return { channel: "\u9489\u9489", skipped: true };
   const { md, catLabel } = payload;
   let url = webhook;
-  // 加签支持
   if (env.DINGTALK_SECRET) {
     const timestamp = Date.now();
-    const strToSign = timestamp + '\n' + env.DINGTALK_SECRET;
+    const strToSign = timestamp + "\n" + env.DINGTALK_SECRET;
     const enc = new TextEncoder();
-    const key = await crypto.subtle.importKey('raw', enc.encode(env.DINGTALK_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-    const sig = await crypto.subtle.sign('HMAC', key, enc.encode(strToSign));
+    const key = await crypto.subtle.importKey("raw", enc.encode(env.DINGTALK_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    const sig = await crypto.subtle.sign("HMAC", key, enc.encode(strToSign));
     const b64 = btoa(String.fromCharCode(...new Uint8Array(sig)));
-    url += (url.includes('?') ? '&' : '?') + 'timestamp=' + timestamp + '&sign=' + encodeURIComponent(b64);
+    url += (url.includes("?") ? "&" : "?") + "timestamp=" + timestamp + "&sign=" + encodeURIComponent(b64);
   }
   const body = {
-    msgtype: 'markdown',
-    markdown: { title: '📰 中文新闻 Hub - ' + catLabel, text: md },
+    msgtype: "markdown",
+    markdown: { title: "\u{1F4F0} \u4E2D\u6587\u65B0\u95FB Hub - " + catLabel, text: md }
   };
   const resp = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
   });
   const data = await resp.json();
-  if (data.errcode !== 0) throw new Error('钉钉推送失败: ' + (data.errmsg || JSON.stringify(data)));
-  return { channel: '钉钉', ok: true };
+  if (data.errcode !== 0)
+    throw new Error("\u9489\u9489\u63A8\u9001\u5931\u8D25: " + (data.errmsg || JSON.stringify(data)));
+  return { channel: "\u9489\u9489", ok: true };
 }
-
-// ── 企业微信 ────────────────────────────────────────────────
+__name(pushDingtalk, "pushDingtalk");
 async function pushWecom(env, config, payload) {
   const webhook = env.WECOM_WEBHOOK;
-  if (!webhook) return { channel: '企业微信', skipped: true };
+  if (!webhook)
+    return { channel: "\u4F01\u4E1A\u5FAE\u4FE1", skipped: true };
   const { md } = payload;
-  const body = { msgtype: 'markdown', markdown: { content: md } };
+  const body = { msgtype: "markdown", markdown: { content: md } };
   const resp = await fetch(webhook, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
   });
   const data = await resp.json();
-  if (data.errcode !== 0) throw new Error('企业微信推送失败: ' + (data.errmsg || JSON.stringify(data)));
-  return { channel: '企业微信', ok: true };
+  if (data.errcode !== 0)
+    throw new Error("\u4F01\u4E1A\u5FAE\u4FE1\u63A8\u9001\u5931\u8D25: " + (data.errmsg || JSON.stringify(data)));
+  return { channel: "\u4F01\u4E1A\u5FAE\u4FE1", ok: true };
 }
-
-// ── PushPlus ─────────────────────────────────────────────────
+__name(pushWecom, "pushWecom");
 async function pushPushPlus(env, config, payload) {
   const token = env.PUSHPLUS_TOKEN;
-  if (!token) return { channel: 'PushPlus', skipped: true };
+  if (!token)
+    return { channel: "PushPlus", skipped: true };
   const { md, catLabel } = payload;
   const body = {
     token,
-    title: '📰 中文新闻 Hub - ' + catLabel,
+    title: "\u{1F4F0} \u4E2D\u6587\u65B0\u95FB Hub - " + catLabel,
     content: md,
-    template: 'markdown',
+    template: "markdown"
   };
-  const resp = await fetch('https://www.pushplus.plus/send', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+  const resp = await fetch("https://www.pushplus.plus/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
   });
   const data = await resp.json();
-  if (data.code !== 200) throw new Error('PushPlus 推送失败: ' + (data.msg || JSON.stringify(data)));
-  return { channel: 'PushPlus', ok: true };
+  if (data.code !== 200)
+    throw new Error("PushPlus \u63A8\u9001\u5931\u8D25: " + (data.msg || JSON.stringify(data)));
+  return { channel: "PushPlus", ok: true };
 }
-
-// ── Bark ─────────────────────────────────────────────────────
+__name(pushPushPlus, "pushPushPlus");
 async function pushBark(env, config, payload) {
   const barkUrl = env.BARK_URL;
-  if (!barkUrl) return { channel: 'Bark', skipped: true };
+  if (!barkUrl)
+    return { channel: "Bark", skipped: true };
   const { plain, catLabel } = payload;
-  // 使用 POST JSON 避免 GET URL 特殊字符被截断
-  const base = barkUrl.replace(/\/$/, '');
+  const base = barkUrl.replace(/\/$/, "");
   const resp = await fetch(base, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      title: '📰 中文新闻 Hub - ' + catLabel,
-      body: plain.slice(0, 1000),
-      group: '新闻',
-      icon: 'https://www.google.com/favicon.ico',
-    }),
+      title: "\u{1F4F0} \u4E2D\u6587\u65B0\u95FB Hub - " + catLabel,
+      body: plain.slice(0, 1e3),
+      group: "\u65B0\u95FB",
+      icon: "https://www.google.com/favicon.ico"
+    })
   });
   const data = await resp.json();
-  if (data.code !== 200) throw new Error('Bark 推送失败: ' + (data.message || JSON.stringify(data)));
-  return { channel: 'Bark', ok: true };
+  if (data.code !== 200)
+    throw new Error("Bark \u63A8\u9001\u5931\u8D25: " + (data.message || JSON.stringify(data)));
+  return { channel: "Bark", ok: true };
 }
-
-// ── WxPusher ─────────────────────────────────────────────────
-// 环境变量：
-//   WXPUSHER_APP_TOKEN   应用的 appToken（在 WxPusher 后台创建应用后获得）
-//   WXPUSHER_UIDS        接收消息的用户 UID，多个用英文逗号分隔，例如 UID_xxx,UID_yyy
-//   WXPUSHER_TOPIC_IDS   接收消息的主题 ID，多个用英文逗号分隔（可选，与 UIDS 二选一或同时填）
+__name(pushBark, "pushBark");
 async function pushWxPusher(env, config, payload) {
   const appToken = env.WXPUSHER_APP_TOKEN;
-  if (!appToken) return { channel: 'WxPusher', skipped: true };
-
+  if (!appToken)
+    return { channel: "WxPusher", skipped: true };
   const { md, catLabel } = payload;
-
-  // 解析 UID 列表（允许为空，此时依赖 topicIds）
-  const uids = (env.WXPUSHER_UIDS || '')
-    .split(/[,，\s]+/).map(s => s.trim()).filter(Boolean);
-
-  // 解析 Topic ID 列表
-  const topicIds = (env.WXPUSHER_TOPIC_IDS || '')
-    .split(/[,，\s]+/).map(s => parseInt(s.trim())).filter(n => !isNaN(n));
-
+  const uids = (env.WXPUSHER_UIDS || "").split(/[,，\s]+/).map((s) => s.trim()).filter(Boolean);
+  const topicIds = (env.WXPUSHER_TOPIC_IDS || "").split(/[,，\s]+/).map((s) => parseInt(s.trim())).filter((n) => !isNaN(n));
   if (uids.length === 0 && topicIds.length === 0) {
-    throw new Error('WxPusher：请配置 WXPUSHER_UIDS 或 WXPUSHER_TOPIC_IDS');
+    throw new Error("WxPusher\uFF1A\u8BF7\u914D\u7F6E WXPUSHER_UIDS \u6216 WXPUSHER_TOPIC_IDS");
   }
-
   const body = {
     appToken,
     content: md,
-    summary: '📰 中文新闻 Hub - ' + catLabel,  // 消息摘要，显示在微信列表页
-    contentType: 3,   // 3 = Markdown
-    uids: uids.length > 0 ? uids : undefined,
-    topicIds: topicIds.length > 0 ? topicIds : undefined,
-    verifyPayType: 0, // 0 = 不验证，直接发送
+    summary: "\u{1F4F0} \u4E2D\u6587\u65B0\u95FB Hub - " + catLabel,
+    // 消息摘要，显示在微信列表页
+    contentType: 3,
+    // 3 = Markdown
+    uids: uids.length > 0 ? uids : void 0,
+    topicIds: topicIds.length > 0 ? topicIds : void 0,
+    verifyPayType: 0
+    // 0 = 不验证，直接发送
   };
-
-  const resp = await fetch('https://wxpusher.zjiecode.com/api/send/message', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+  const resp = await fetch("https://wxpusher.zjiecode.com/api/send/message", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
   });
   const data = await resp.json();
-  // WxPusher 成功时 code=1000
-  if (data.code !== 1000) throw new Error('WxPusher 推送失败: ' + (data.msg || JSON.stringify(data)));
-  return { channel: 'WxPusher', ok: true };
+  if (data.code !== 1e3)
+    throw new Error("WxPusher \u63A8\u9001\u5931\u8D25: " + (data.msg || JSON.stringify(data)));
+  return { channel: "WxPusher", ok: true };
 }
-
-// ── ntfy ─────────────────────────────────────────────────────
-// 环境变量：
-//   NTFY_URL      ntfy 推送地址，含 topic，如 https://ntfy.sh/your_topic
-//                 自托管示例：https://ntfy.example.com/your_topic
-//   NTFY_TOKEN    访问令牌（可选，服务端开启认证时填写）
+__name(pushWxPusher, "pushWxPusher");
 async function pushNtfy(env, config, payload) {
   const ntfyUrl = env.NTFY_URL;
-  if (!ntfyUrl) return { channel: 'ntfy', skipped: true };
+  if (!ntfyUrl)
+    return { channel: "ntfy", skipped: true };
   const { plain, catLabel } = payload;
   const headers = {
-    'Title':    '📰 中文新闻 Hub - ' + catLabel,
-    'Priority': 'default',
-    'Tags':     'newspaper',
-    'Content-Type': 'text/plain; charset=utf-8',
+    "Title": "\u{1F4F0} \u4E2D\u6587\u65B0\u95FB Hub - " + catLabel,
+    "Priority": "default",
+    "Tags": "newspaper",
+    "Content-Type": "text/plain; charset=utf-8"
   };
-  if (env.NTFY_TOKEN) headers['Authorization'] = 'Bearer ' + env.NTFY_TOKEN;
+  if (env.NTFY_TOKEN)
+    headers["Authorization"] = "Bearer " + env.NTFY_TOKEN;
   const resp = await fetch(ntfyUrl, {
-    method: 'POST',
+    method: "POST",
     headers,
-    body: plain.slice(0, 4000),
+    body: plain.slice(0, 4e3)
   });
-  if (!resp.ok) throw new Error('ntfy 推送失败: HTTP ' + resp.status);
-  return { channel: 'ntfy', ok: true };
+  if (!resp.ok)
+    throw new Error("ntfy \u63A8\u9001\u5931\u8D25: HTTP " + resp.status);
+  return { channel: "ntfy", ok: true };
 }
-
-// ── Gotify ────────────────────────────────────────────────────
-// 环境变量：
-//   GOTIFY_URL    Gotify 服务地址，如 https://gotify.example.com
-//   GOTIFY_TOKEN  应用 Token（在 Gotify 后台「Apps」中创建应用获得）
+__name(pushNtfy, "pushNtfy");
 async function pushGotify(env, config, payload) {
   const gotifyUrl = env.GOTIFY_URL;
   const gotifyToken = env.GOTIFY_TOKEN;
-  if (!gotifyUrl || !gotifyToken) return { channel: 'Gotify', skipped: true };
+  if (!gotifyUrl || !gotifyToken)
+    return { channel: "Gotify", skipped: true };
   const { md, catLabel } = payload;
-  const base = gotifyUrl.replace(/\/$/, '');
-  const resp = await fetch(base + '/message?token=' + encodeURIComponent(gotifyToken), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+  const base = gotifyUrl.replace(/\/$/, "");
+  const resp = await fetch(base + "/message?token=" + encodeURIComponent(gotifyToken), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      title:    '📰 中文新闻 Hub - ' + catLabel,
-      message:  md,
+      title: "\u{1F4F0} \u4E2D\u6587\u65B0\u95FB Hub - " + catLabel,
+      message: md,
       priority: 5,
       extras: {
-        'client::display': { contentType: 'text/markdown' },
-      },
-    }),
+        "client::display": { contentType: "text/markdown" }
+      }
+    })
   });
-  if (!resp.ok) throw new Error('Gotify 推送失败: HTTP ' + resp.status);
-  return { channel: 'Gotify', ok: true };
+  if (!resp.ok)
+    throw new Error("Gotify \u63A8\u9001\u5931\u8D25: HTTP " + resp.status);
+  return { channel: "Gotify", ok: true };
 }
-
-// ============================================================
-// 天气获取与推送（每天早上 7:30 北京时间）
-// 使用 wttr.in 免费天气接口，无需 API Key
-// 支持中英文城市名，如 "北京"、"Shanghai"、"Hong Kong"
-// ============================================================
-
-const WEATHER_ICONS = {
-  '晴': '☀️', '晴天': '☀️', '阳光': '☀️', 'Sunny': '☀️', 'Clear': '☀️',
-  '多云': '⛅', '局部多云': '⛅', 'Partly': '⛅', 'Cloudy': '☁️', '阴': '☁️',
-  '雨': '🌧️', '小雨': '🌦️', '中雨': '🌧️', '大雨': '⛈️', '暴雨': '⛈️',
-  '雷': '⛈️', '雷雨': '⛈️', 'Thunder': '⛈️', 'Rain': '🌧️', 'Drizzle': '🌦️',
-  '雪': '❄️', '小雪': '🌨️', '大雪': '❄️', 'Snow': '❄️',
-  '雾': '🌫️', 'Fog': '🌫️', '霾': '😷', '沙尘': '🌪️',
+__name(pushGotify, "pushGotify");
+var WEATHER_ICONS = {
+  "\u6674": "\u2600\uFE0F",
+  "\u6674\u5929": "\u2600\uFE0F",
+  "\u9633\u5149": "\u2600\uFE0F",
+  "Sunny": "\u2600\uFE0F",
+  "Clear": "\u2600\uFE0F",
+  "\u591A\u4E91": "\u26C5",
+  "\u5C40\u90E8\u591A\u4E91": "\u26C5",
+  "Partly": "\u26C5",
+  "Cloudy": "\u2601\uFE0F",
+  "\u9634": "\u2601\uFE0F",
+  "\u96E8": "\u{1F327}\uFE0F",
+  "\u5C0F\u96E8": "\u{1F326}\uFE0F",
+  "\u4E2D\u96E8": "\u{1F327}\uFE0F",
+  "\u5927\u96E8": "\u26C8\uFE0F",
+  "\u66B4\u96E8": "\u26C8\uFE0F",
+  "\u96F7": "\u26C8\uFE0F",
+  "\u96F7\u96E8": "\u26C8\uFE0F",
+  "Thunder": "\u26C8\uFE0F",
+  "Rain": "\u{1F327}\uFE0F",
+  "Drizzle": "\u{1F326}\uFE0F",
+  "\u96EA": "\u2744\uFE0F",
+  "\u5C0F\u96EA": "\u{1F328}\uFE0F",
+  "\u5927\u96EA": "\u2744\uFE0F",
+  "Snow": "\u2744\uFE0F",
+  "\u96FE": "\u{1F32B}\uFE0F",
+  "Fog": "\u{1F32B}\uFE0F",
+  "\u973E": "\u{1F637}",
+  "\u6C99\u5C18": "\u{1F32A}\uFE0F"
 };
-
 function getWeatherIcon(desc) {
-  if (!desc) return '🌤️';
+  if (!desc)
+    return "\u{1F324}\uFE0F";
   for (const [kw, icon] of Object.entries(WEATHER_ICONS)) {
-    if (desc.includes(kw)) return icon;
+    if (desc.includes(kw))
+      return icon;
   }
-  return '🌤️';
+  return "\u{1F324}\uFE0F";
 }
-
+__name(getWeatherIcon, "getWeatherIcon");
 function getWindLabel(kmph) {
   const v = parseInt(kmph) || 0;
-  if (v < 1) return '静风';
-  if (v < 6) return '软风';
-  if (v < 12) return '轻风';
-  if (v < 20) return '微风';
-  if (v < 29) return '和风';
-  if (v < 39) return '清风';
-  if (v < 50) return '强风';
-  if (v < 62) return '劲风';
-  if (v < 75) return '大风';
-  return '烈风';
+  if (v < 1)
+    return "\u9759\u98CE";
+  if (v < 6)
+    return "\u8F6F\u98CE";
+  if (v < 12)
+    return "\u8F7B\u98CE";
+  if (v < 20)
+    return "\u5FAE\u98CE";
+  if (v < 29)
+    return "\u548C\u98CE";
+  if (v < 39)
+    return "\u6E05\u98CE";
+  if (v < 50)
+    return "\u5F3A\u98CE";
+  if (v < 62)
+    return "\u52B2\u98CE";
+  if (v < 75)
+    return "\u5927\u98CE";
+  return "\u70C8\u98CE";
 }
-
+__name(getWindLabel, "getWindLabel");
 function getUVLabel(uv) {
   const v = parseInt(uv) || 0;
-  if (v <= 2) return v + ' 低';
-  if (v <= 5) return v + ' 中等';
-  if (v <= 7) return v + ' 高';
-  if (v <= 10) return v + ' 很高';
-  return v + ' 极高';
+  if (v <= 2)
+    return v + " \u4F4E";
+  if (v <= 5)
+    return v + " \u4E2D\u7B49";
+  if (v <= 7)
+    return v + " \u9AD8";
+  if (v <= 10)
+    return v + " \u5F88\u9AD8";
+  return v + " \u6781\u9AD8";
 }
-
-const HOUR_LABELS = { '0': '00:00', '300': '03:00', '600': '06:00', '900': '09:00', '1200': '12:00', '1500': '15:00', '1800': '18:00', '2100': '21:00' };
-
+__name(getUVLabel, "getUVLabel");
+var HOUR_LABELS = { "0": "00:00", "300": "03:00", "600": "06:00", "900": "09:00", "1200": "12:00", "1500": "15:00", "1800": "18:00", "2100": "21:00" };
 async function fetchWeather(city) {
-  if (!city) return null;
+  if (!city)
+    return null;
   try {
-    const url = 'https://wttr.in/' + encodeURIComponent(city) + '?format=j1';
+    const url = "https://wttr.in/" + encodeURIComponent(city) + "?format=j1";
     const resp = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; WeatherBot/1.0)', 'Accept-Language': 'zh-CN,zh;q=0.9' },
-      signal: AbortSignal.timeout(10000),
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; WeatherBot/1.0)", "Accept-Language": "zh-CN,zh;q=0.9" },
+      signal: AbortSignal.timeout(1e4)
     });
-    if (!resp.ok) return null;
+    if (!resp.ok)
+      return null;
     return await resp.json();
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
-
+__name(fetchWeather, "fetchWeather");
 function buildWeatherMessage(city, data) {
-  if (!data) return null;
+  if (!data)
+    return null;
   const cur = data.current_condition?.[0];
-  if (!cur) return null;
-
-  // 优先取中文描述
-  const desc = cur.lang_zh?.[0]?.value || cur.weatherDesc?.[0]?.value || '未知';
+  if (!cur)
+    return null;
+  const desc = cur.lang_zh?.[0]?.value || cur.weatherDesc?.[0]?.value || "\u672A\u77E5";
   const icon = getWeatherIcon(desc);
-  const tempC    = cur.temp_C;
+  const tempC = cur.temp_C;
   const feelsLike = cur.FeelsLikeC;
-  const humidity  = cur.humidity;
-  const windKmph  = cur.windspeedKmph;
-  const windDir   = cur.winddir16Point;
-  const uvIndex   = cur.uvIndex;
+  const humidity = cur.humidity;
+  const windKmph = cur.windspeedKmph;
+  const windDir = cur.winddir16Point;
+  const uvIndex = cur.uvIndex;
   const visibility = cur.visibility;
-
-  const today    = data.weather?.[0];
+  const today = data.weather?.[0];
   const tomorrow = data.weather?.[1];
   const dayAfter = data.weather?.[2];
-
   const todayMax = today?.maxtempC;
   const todayMin = today?.mintempC;
-
-  const now = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
-
-  // ── 纯文本版 ──
-  let plain = '🌤 早安天气播报\n';
-  plain += '📍 ' + city + '  |  ' + now + '\n';
-  plain += '\n━━━ ' + icon + ' 当前天气 ━━━\n';
-  plain += '天气：' + desc + '\n';
-  plain += '气温：' + tempC + '°C（体感 ' + feelsLike + '°C）\n';
-  plain += '今日：' + todayMin + '°C ~ ' + todayMax + '°C\n';
-  plain += '湿度：' + humidity + '%  |  风速：' + windKmph + ' km/h ' + getWindLabel(windKmph) + '\n';
-  plain += '能见度：' + visibility + ' km  |  紫外线：' + getUVLabel(uvIndex) + '\n';
-
-  // 今日逐时
+  const now = (/* @__PURE__ */ new Date()).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "long", day: "numeric", weekday: "long" });
+  let plain = "\u{1F324} \u65E9\u5B89\u5929\u6C14\u64AD\u62A5\n";
+  plain += "\u{1F4CD} " + city + "  |  " + now + "\n";
+  plain += "\n\u2501\u2501\u2501 " + icon + " \u5F53\u524D\u5929\u6C14 \u2501\u2501\u2501\n";
+  plain += "\u5929\u6C14\uFF1A" + desc + "\n";
+  plain += "\u6C14\u6E29\uFF1A" + tempC + "\xB0C\uFF08\u4F53\u611F " + feelsLike + "\xB0C\uFF09\n";
+  plain += "\u4ECA\u65E5\uFF1A" + todayMin + "\xB0C ~ " + todayMax + "\xB0C\n";
+  plain += "\u6E7F\u5EA6\uFF1A" + humidity + "%  |  \u98CE\u901F\uFF1A" + windKmph + " km/h " + getWindLabel(windKmph) + "\n";
+  plain += "\u80FD\u89C1\u5EA6\uFF1A" + visibility + " km  |  \u7D2B\u5916\u7EBF\uFF1A" + getUVLabel(uvIndex) + "\n";
   if (today?.hourly?.length) {
-    plain += '\n━━━ ⏰ 今日时段 ━━━\n';
-    today.hourly.forEach(h => {
+    plain += "\n\u2501\u2501\u2501 \u23F0 \u4ECA\u65E5\u65F6\u6BB5 \u2501\u2501\u2501\n";
+    today.hourly.forEach((h) => {
       const t = HOUR_LABELS[h.time] || h.time;
-      const hDesc = h.lang_zh?.[0]?.value || h.weatherDesc?.[0]?.value || '';
+      const hDesc = h.lang_zh?.[0]?.value || h.weatherDesc?.[0]?.value || "";
       const hIcon = getWeatherIcon(hDesc);
-      plain += t + '  ' + h.tempC + '°C  ' + hIcon + ' ' + hDesc;
-      if (parseInt(h.chanceofrain) > 20) plain += '  ☔' + h.chanceofrain + '%';
-      plain += '\n';
+      plain += t + "  " + h.tempC + "\xB0C  " + hIcon + " " + hDesc;
+      if (parseInt(h.chanceofrain) > 20)
+        plain += "  \u2614" + h.chanceofrain + "%";
+      plain += "\n";
     });
   }
-
-  // 未来两天
   if (tomorrow) {
-    const tDesc = tomorrow.hourly?.[4]?.lang_zh?.[0]?.value || tomorrow.hourly?.[4]?.weatherDesc?.[0]?.value || '';
+    const tDesc = tomorrow.hourly?.[4]?.lang_zh?.[0]?.value || tomorrow.hourly?.[4]?.weatherDesc?.[0]?.value || "";
     const tIcon = getWeatherIcon(tDesc);
-    plain += '\n━━━ 📅 明日预报 ━━━\n';
-    plain += tIcon + ' ' + tDesc + '  ' + tomorrow.mintempC + '°C ~ ' + tomorrow.maxtempC + '°C\n';
+    plain += "\n\u2501\u2501\u2501 \u{1F4C5} \u660E\u65E5\u9884\u62A5 \u2501\u2501\u2501\n";
+    plain += tIcon + " " + tDesc + "  " + tomorrow.mintempC + "\xB0C ~ " + tomorrow.maxtempC + "\xB0C\n";
   }
   if (dayAfter) {
-    const dDesc = dayAfter.hourly?.[4]?.lang_zh?.[0]?.value || dayAfter.hourly?.[4]?.weatherDesc?.[0]?.value || '';
+    const dDesc = dayAfter.hourly?.[4]?.lang_zh?.[0]?.value || dayAfter.hourly?.[4]?.weatherDesc?.[0]?.value || "";
     const dIcon = getWeatherIcon(dDesc);
-    // 后天日期
-    const da = new Date();
+    const da = /* @__PURE__ */ new Date();
     da.setDate(da.getDate() + 2);
-    const daLabel = (da.getMonth() + 1) + '月' + da.getDate() + '日';
-    plain += dIcon + ' 后天（' + daLabel + '）' + dDesc + '  ' + dayAfter.mintempC + '°C ~ ' + dayAfter.maxtempC + '°C\n';
+    const daLabel = da.getMonth() + 1 + "\u6708" + da.getDate() + "\u65E5";
+    plain += dIcon + " \u540E\u5929\uFF08" + daLabel + "\uFF09" + dDesc + "  " + dayAfter.mintempC + "\xB0C ~ " + dayAfter.maxtempC + "\xB0C\n";
   }
-
-  // ── Markdown 版 ──
-  let md = '## ' + icon + ' 早安天气播报\n\n';
-  md += '**📍 ' + city + '**  |  ' + now + '\n\n';
-  md += '### 🌡 当前天气\n';
-  md += '- 天气：**' + desc + '**\n';
-  md += '- 气温：**' + tempC + '°C**（体感 ' + feelsLike + '°C）\n';
-  md += '- 今日：' + todayMin + '°C ~ ' + todayMax + '°C\n';
-  md += '- 湿度：' + humidity + '%  |  风速：' + windKmph + ' km/h（' + getWindLabel(windKmph) + '）\n';
-  md += '- 能见度：' + visibility + ' km  |  紫外线：' + getUVLabel(uvIndex) + '\n\n';
+  let md = "## " + icon + " \u65E9\u5B89\u5929\u6C14\u64AD\u62A5\n\n";
+  md += "**\u{1F4CD} " + city + "**  |  " + now + "\n\n";
+  md += "### \u{1F321} \u5F53\u524D\u5929\u6C14\n";
+  md += "- \u5929\u6C14\uFF1A**" + desc + "**\n";
+  md += "- \u6C14\u6E29\uFF1A**" + tempC + "\xB0C**\uFF08\u4F53\u611F " + feelsLike + "\xB0C\uFF09\n";
+  md += "- \u4ECA\u65E5\uFF1A" + todayMin + "\xB0C ~ " + todayMax + "\xB0C\n";
+  md += "- \u6E7F\u5EA6\uFF1A" + humidity + "%  |  \u98CE\u901F\uFF1A" + windKmph + " km/h\uFF08" + getWindLabel(windKmph) + "\uFF09\n";
+  md += "- \u80FD\u89C1\u5EA6\uFF1A" + visibility + " km  |  \u7D2B\u5916\u7EBF\uFF1A" + getUVLabel(uvIndex) + "\n\n";
   if (today?.hourly?.length) {
-    md += '### ⏰ 今日时段\n';
-    today.hourly.forEach(h => {
+    md += "### \u23F0 \u4ECA\u65E5\u65F6\u6BB5\n";
+    today.hourly.forEach((h) => {
       const t = HOUR_LABELS[h.time] || h.time;
-      const hDesc = h.lang_zh?.[0]?.value || h.weatherDesc?.[0]?.value || '';
+      const hDesc = h.lang_zh?.[0]?.value || h.weatherDesc?.[0]?.value || "";
       const hIcon = getWeatherIcon(hDesc);
-      md += '- **' + t + '** ' + h.tempC + '°C  ' + hIcon + ' ' + hDesc;
-      if (parseInt(h.chanceofrain) > 20) md += '  ☔' + h.chanceofrain + '%';
-      md += '\n';
+      md += "- **" + t + "** " + h.tempC + "\xB0C  " + hIcon + " " + hDesc;
+      if (parseInt(h.chanceofrain) > 20)
+        md += "  \u2614" + h.chanceofrain + "%";
+      md += "\n";
     });
-    md += '\n';
+    md += "\n";
   }
   if (tomorrow || dayAfter) {
-    md += '### 📅 未来预报\n';
+    md += "### \u{1F4C5} \u672A\u6765\u9884\u62A5\n";
     if (tomorrow) {
-      const tDesc = tomorrow.hourly?.[4]?.lang_zh?.[0]?.value || tomorrow.hourly?.[4]?.weatherDesc?.[0]?.value || '';
-      md += '- 明日：' + getWeatherIcon(tDesc) + ' ' + tDesc + '  ' + tomorrow.mintempC + '°C ~ ' + tomorrow.maxtempC + '°C\n';
+      const tDesc = tomorrow.hourly?.[4]?.lang_zh?.[0]?.value || tomorrow.hourly?.[4]?.weatherDesc?.[0]?.value || "";
+      md += "- \u660E\u65E5\uFF1A" + getWeatherIcon(tDesc) + " " + tDesc + "  " + tomorrow.mintempC + "\xB0C ~ " + tomorrow.maxtempC + "\xB0C\n";
     }
     if (dayAfter) {
-      const dDesc = dayAfter.hourly?.[4]?.lang_zh?.[0]?.value || dayAfter.hourly?.[4]?.weatherDesc?.[0]?.value || '';
-      const da = new Date(); da.setDate(da.getDate() + 2);
-      md += '- 后天（' + (da.getMonth()+1) + '/' + da.getDate() + '）：' + getWeatherIcon(dDesc) + ' ' + dDesc + '  ' + dayAfter.mintempC + '°C ~ ' + dayAfter.maxtempC + '°C\n';
+      const dDesc = dayAfter.hourly?.[4]?.lang_zh?.[0]?.value || dayAfter.hourly?.[4]?.weatherDesc?.[0]?.value || "";
+      const da = /* @__PURE__ */ new Date();
+      da.setDate(da.getDate() + 2);
+      md += "- \u540E\u5929\uFF08" + (da.getMonth() + 1) + "/" + da.getDate() + "\uFF09\uFF1A" + getWeatherIcon(dDesc) + " " + dDesc + "  " + dayAfter.mintempC + "\xB0C ~ " + dayAfter.maxtempC + "\xB0C\n";
     }
   }
-
-  // Telegram HTML 版
-  let tg = '🌤 <b>早安天气播报</b>\n';
-  tg += '📍 <b>' + escapeTg(city) + '</b>  |  ' + escapeTg(now) + '\n\n';
-  tg += '━━━ ' + icon + ' <b>当前天气</b> ━━━\n';
-  tg += '天气：<b>' + escapeTg(desc) + '</b>\n';
-  tg += '气温：<b>' + tempC + '°C</b>（体感 ' + feelsLike + '°C）\n';
-  tg += '今日：' + todayMin + '°C ~ ' + todayMax + '°C\n';
-  tg += '湿度：' + humidity + '%  |  风速：' + windKmph + ' km/h ' + getWindLabel(windKmph) + '\n';
-  tg += '能见度：' + visibility + ' km  |  紫外线：' + getUVLabel(uvIndex) + '\n';
+  let tg = "\u{1F324} <b>\u65E9\u5B89\u5929\u6C14\u64AD\u62A5</b>\n";
+  tg += "\u{1F4CD} <b>" + escapeTg(city) + "</b>  |  " + escapeTg(now) + "\n\n";
+  tg += "\u2501\u2501\u2501 " + icon + " <b>\u5F53\u524D\u5929\u6C14</b> \u2501\u2501\u2501\n";
+  tg += "\u5929\u6C14\uFF1A<b>" + escapeTg(desc) + "</b>\n";
+  tg += "\u6C14\u6E29\uFF1A<b>" + tempC + "\xB0C</b>\uFF08\u4F53\u611F " + feelsLike + "\xB0C\uFF09\n";
+  tg += "\u4ECA\u65E5\uFF1A" + todayMin + "\xB0C ~ " + todayMax + "\xB0C\n";
+  tg += "\u6E7F\u5EA6\uFF1A" + humidity + "%  |  \u98CE\u901F\uFF1A" + windKmph + " km/h " + getWindLabel(windKmph) + "\n";
+  tg += "\u80FD\u89C1\u5EA6\uFF1A" + visibility + " km  |  \u7D2B\u5916\u7EBF\uFF1A" + getUVLabel(uvIndex) + "\n";
   if (today?.hourly?.length) {
-    tg += '\n━━━ ⏰ <b>今日时段</b> ━━━\n';
-    today.hourly.forEach(h => {
+    tg += "\n\u2501\u2501\u2501 \u23F0 <b>\u4ECA\u65E5\u65F6\u6BB5</b> \u2501\u2501\u2501\n";
+    today.hourly.forEach((h) => {
       const t = HOUR_LABELS[h.time] || h.time;
-      const hDesc = h.lang_zh?.[0]?.value || h.weatherDesc?.[0]?.value || '';
-      tg += t + '  ' + h.tempC + '°C  ' + getWeatherIcon(hDesc) + ' ' + escapeTg(hDesc);
-      if (parseInt(h.chanceofrain) > 20) tg += '  ☔' + h.chanceofrain + '%';
-      tg += '\n';
+      const hDesc = h.lang_zh?.[0]?.value || h.weatherDesc?.[0]?.value || "";
+      tg += t + "  " + h.tempC + "\xB0C  " + getWeatherIcon(hDesc) + " " + escapeTg(hDesc);
+      if (parseInt(h.chanceofrain) > 20)
+        tg += "  \u2614" + h.chanceofrain + "%";
+      tg += "\n";
     });
   }
   if (tomorrow) {
-    const tDesc = tomorrow.hourly?.[4]?.lang_zh?.[0]?.value || tomorrow.hourly?.[4]?.weatherDesc?.[0]?.value || '';
-    tg += '\n━━━ 📅 <b>明日预报</b> ━━━\n';
-    tg += getWeatherIcon(tDesc) + ' ' + escapeTg(tDesc) + '  ' + tomorrow.mintempC + '°C ~ ' + tomorrow.maxtempC + '°C\n';
+    const tDesc = tomorrow.hourly?.[4]?.lang_zh?.[0]?.value || tomorrow.hourly?.[4]?.weatherDesc?.[0]?.value || "";
+    tg += "\n\u2501\u2501\u2501 \u{1F4C5} <b>\u660E\u65E5\u9884\u62A5</b> \u2501\u2501\u2501\n";
+    tg += getWeatherIcon(tDesc) + " " + escapeTg(tDesc) + "  " + tomorrow.mintempC + "\xB0C ~ " + tomorrow.maxtempC + "\xB0C\n";
   }
   if (dayAfter) {
-    const dDesc = dayAfter.hourly?.[4]?.lang_zh?.[0]?.value || dayAfter.hourly?.[4]?.weatherDesc?.[0]?.value || '';
-    const da = new Date(); da.setDate(da.getDate() + 2);
-    tg += getWeatherIcon(dDesc) + ' 后天（' + (da.getMonth()+1) + '/' + da.getDate() + '）' + escapeTg(dDesc) + '  ' + dayAfter.mintempC + '°C ~ ' + dayAfter.maxtempC + '°C\n';
+    const dDesc = dayAfter.hourly?.[4]?.lang_zh?.[0]?.value || dayAfter.hourly?.[4]?.weatherDesc?.[0]?.value || "";
+    const da = /* @__PURE__ */ new Date();
+    da.setDate(da.getDate() + 2);
+    tg += getWeatherIcon(dDesc) + " \u540E\u5929\uFF08" + (da.getMonth() + 1) + "/" + da.getDate() + "\uFF09" + escapeTg(dDesc) + "  " + dayAfter.mintempC + "\xB0C ~ " + dayAfter.maxtempC + "\xB0C\n";
   }
-
   return { plain, md, tg };
 }
-
-// KV key：保存天气推送失败的渠道列表，TTL 到当天结束（23h），下次 cron 自动重试
-const WEATHER_FAILED_KEY = 'weather_failed_channels';
-
+__name(buildWeatherMessage, "buildWeatherMessage");
+var WEATHER_FAILED_KEY = "weather_failed_channels";
 async function runWeatherPush(env, config, { isRetry = false } = {}) {
   const city = config.weatherCity?.trim();
-  if (!city || config.weatherEnabled === false) return { skipped: true, reason: '天气推送未启用或未设置城市' };
-
-  // 重试模式：只跑上次失败的渠道；若无失败记录则直接返回
+  if (!city || config.weatherEnabled === false)
+    return { skipped: true, reason: "\u5929\u6C14\u63A8\u9001\u672A\u542F\u7528\u6216\u672A\u8BBE\u7F6E\u57CE\u5E02" };
   let failedChannels = [];
   if (isRetry) {
     try {
       const raw = await env.NEWS_CONFIG.get(WEATHER_FAILED_KEY);
       failedChannels = raw ? JSON.parse(raw) : [];
-    } catch {}
-    if (failedChannels.length === 0) return { skipped: true, reason: '无待重试的天气渠道' };
+    } catch {
+    }
+    if (failedChannels.length === 0)
+      return { skipped: true, reason: "\u65E0\u5F85\u91CD\u8BD5\u7684\u5929\u6C14\u6E20\u9053" };
   } else {
-    // 正常推送：防重推，今天已全部推成功则跳过
-    const today = new Date().toISOString().slice(0, 10);
-    const runKey = 'weather_lastRun_' + today;
+    const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    const runKey = "weather_lastRun_" + today;
     try {
       const lastRun = await env.NEWS_CONFIG.get(runKey);
-      if (lastRun) return { skipped: true, reason: '今日天气已推送' };
-    } catch {}
+      if (lastRun)
+        return { skipped: true, reason: "\u4ECA\u65E5\u5929\u6C14\u5DF2\u63A8\u9001" };
+    } catch {
+    }
   }
-
-  // 获取天气数据（重试时也重新拉取，保证数据新鲜）
   const data = await fetchWeather(city);
-  if (!data) return { ok: false, error: '天气数据获取失败，请检查城市名称' };
-
+  if (!data)
+    return { ok: false, error: "\u5929\u6C14\u6570\u636E\u83B7\u53D6\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u57CE\u5E02\u540D\u79F0" };
   const msgs = buildWeatherMessage(city, data);
-  if (!msgs) return { ok: false, error: '天气数据解析失败' };
-
-  // 各渠道推送函数，统一接口：返回 { channel, ok } 或 { channel, skipped } 或 throw
+  if (!msgs)
+    return { ok: false, error: "\u5929\u6C14\u6570\u636E\u89E3\u6790\u5931\u8D25" };
   const allPushers = [
     {
-      name: 'Telegram',
+      name: "Telegram",
       fn: async () => {
-        if (!env.TG_TOKEN || !env.TG_CHAT_ID) return { channel: 'Telegram', skipped: true };
+        if (!env.TG_TOKEN || !env.TG_CHAT_ID)
+          return { channel: "Telegram", skipped: true };
         await sendToTelegramSafe(env, msgs.tg);
-        return { channel: 'Telegram', ok: true };
-      },
+        return { channel: "Telegram", ok: true };
+      }
     },
     {
-      name: '飞书',
+      name: "\u98DE\u4E66",
       fn: async () => {
         const webhook = env.FEISHU_WEBHOOK;
-        if (!webhook) return { channel: '飞书', skipped: true };
-        const body = { msg_type: 'interactive', card: { header: { title: { tag: 'plain_text', content: '🌤 早安天气播报 - ' + city }, template: 'turquoise' }, elements: [{ tag: 'markdown', content: msgs.md }] } };
-        const resp = await fetch(webhook, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!webhook)
+          return { channel: "\u98DE\u4E66", skipped: true };
+        const body = { msg_type: "interactive", card: { header: { title: { tag: "plain_text", content: "\u{1F324} \u65E9\u5B89\u5929\u6C14\u64AD\u62A5 - " + city }, template: "turquoise" }, elements: [{ tag: "markdown", content: msgs.md }] } };
+        const resp = await fetch(webhook, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
         const d = await resp.json();
-        if (d.code !== 0) throw new Error('飞书天气推送失败: ' + d.msg);
-        return { channel: '飞书', ok: true };
-      },
+        if (d.code !== 0)
+          throw new Error("\u98DE\u4E66\u5929\u6C14\u63A8\u9001\u5931\u8D25: " + d.msg);
+        return { channel: "\u98DE\u4E66", ok: true };
+      }
     },
     {
-      name: '钉钉',
+      name: "\u9489\u9489",
       fn: async () => {
         const webhook = env.DINGTALK_WEBHOOK;
-        if (!webhook) return { channel: '钉钉', skipped: true };
+        if (!webhook)
+          return { channel: "\u9489\u9489", skipped: true };
         let url = webhook;
         if (env.DINGTALK_SECRET) {
           const timestamp = Date.now();
-          const strToSign = timestamp + '\n' + env.DINGTALK_SECRET;
+          const strToSign = timestamp + "\n" + env.DINGTALK_SECRET;
           const enc = new TextEncoder();
-          const key = await crypto.subtle.importKey('raw', enc.encode(env.DINGTALK_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-          const sig = await crypto.subtle.sign('HMAC', key, enc.encode(strToSign));
+          const key = await crypto.subtle.importKey("raw", enc.encode(env.DINGTALK_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+          const sig = await crypto.subtle.sign("HMAC", key, enc.encode(strToSign));
           const b64 = btoa(String.fromCharCode(...new Uint8Array(sig)));
-          url += (url.includes('?') ? '&' : '?') + 'timestamp=' + timestamp + '&sign=' + encodeURIComponent(b64);
+          url += (url.includes("?") ? "&" : "?") + "timestamp=" + timestamp + "&sign=" + encodeURIComponent(b64);
         }
-        const body = { msgtype: 'markdown', markdown: { title: '🌤 早安天气 - ' + city, text: msgs.md } };
-        const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const body = { msgtype: "markdown", markdown: { title: "\u{1F324} \u65E9\u5B89\u5929\u6C14 - " + city, text: msgs.md } };
+        const resp = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
         const d = await resp.json();
-        if (d.errcode !== 0) throw new Error('钉钉天气推送失败: ' + d.errmsg);
-        return { channel: '钉钉', ok: true };
-      },
+        if (d.errcode !== 0)
+          throw new Error("\u9489\u9489\u5929\u6C14\u63A8\u9001\u5931\u8D25: " + d.errmsg);
+        return { channel: "\u9489\u9489", ok: true };
+      }
     },
     {
-      name: '企业微信',
+      name: "\u4F01\u4E1A\u5FAE\u4FE1",
       fn: async () => {
         const webhook = env.WECOM_WEBHOOK;
-        if (!webhook) return { channel: '企业微信', skipped: true };
-        const body = { msgtype: 'markdown', markdown: { content: msgs.md } };
-        const resp = await fetch(webhook, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!webhook)
+          return { channel: "\u4F01\u4E1A\u5FAE\u4FE1", skipped: true };
+        const body = { msgtype: "text", text: { content: msgs.md } };
+        const resp = await fetch(webhook, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
         const d = await resp.json();
-        if (d.errcode !== 0) throw new Error('企业微信天气推送失败: ' + d.errmsg);
-        return { channel: '企业微信', ok: true };
-      },
+        if (d.errcode !== 0)
+          throw new Error("\u4F01\u4E1A\u5FAE\u4FE1\u5929\u6C14\u63A8\u9001\u5931\u8D25: " + d.errmsg);
+        return { channel: "\u4F01\u4E1A\u5FAE\u4FE1", ok: true };
+      }
     },
     {
-      name: 'PushPlus',
+      name: "PushPlus",
       fn: async () => {
         const token = env.PUSHPLUS_TOKEN;
-        if (!token) return { channel: 'PushPlus', skipped: true };
-        const body = { token, title: '🌤 早安天气 - ' + city, content: msgs.md, template: 'markdown' };
-        const resp = await fetch('https://www.pushplus.plus/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!token)
+          return { channel: "PushPlus", skipped: true };
+        const body = { token, title: "\u{1F324} \u65E9\u5B89\u5929\u6C14 - " + city, content: msgs.md, template: "markdown" };
+        const resp = await fetch("https://www.pushplus.plus/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
         const d = await resp.json();
-        if (d.code !== 200) throw new Error('PushPlus天气推送失败: ' + d.msg);
-        return { channel: 'PushPlus', ok: true };
-      },
+        if (d.code !== 200)
+          throw new Error("PushPlus\u5929\u6C14\u63A8\u9001\u5931\u8D25: " + d.msg);
+        return { channel: "PushPlus", ok: true };
+      }
     },
     {
-      name: 'Bark',
+      name: "Bark",
       fn: async () => {
         const barkUrl = env.BARK_URL;
-        if (!barkUrl) return { channel: 'Bark', skipped: true };
-        const resp = await fetch(barkUrl.replace(/\/$/, ''), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: '🌤 早安天气 - ' + city, body: msgs.plain.slice(0, 1000), group: '天气', icon: 'https://www.google.com/favicon.ico' }) });
+        if (!barkUrl)
+          return { channel: "Bark", skipped: true };
+        const resp = await fetch(barkUrl.replace(/\/$/, ""), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "\u{1F324} \u65E9\u5B89\u5929\u6C14 - " + city, body: msgs.plain.slice(0, 1e3), group: "\u5929\u6C14", icon: "https://www.google.com/favicon.ico" }) });
         const d = await resp.json();
-        if (d.code !== 200) throw new Error('Bark天气推送失败: ' + d.message);
-        return { channel: 'Bark', ok: true };
-      },
+        if (d.code !== 200)
+          throw new Error("Bark\u5929\u6C14\u63A8\u9001\u5931\u8D25: " + d.message);
+        return { channel: "Bark", ok: true };
+      }
     },
     {
-      name: 'WxPusher',
+      name: "WxPusher",
       fn: async () => {
         const appToken = env.WXPUSHER_APP_TOKEN;
-        if (!appToken) return { channel: 'WxPusher', skipped: true };
-        const uids = (env.WXPUSHER_UIDS || '').split(/[,，\s]+/).map(s => s.trim()).filter(Boolean);
-        const topicIds = (env.WXPUSHER_TOPIC_IDS || '').split(/[,，\s]+/).map(s => parseInt(s.trim())).filter(n => !isNaN(n));
-        if (uids.length === 0 && topicIds.length === 0) throw new Error('WxPusher：请配置 WXPUSHER_UIDS 或 WXPUSHER_TOPIC_IDS');
-        const body = { appToken, content: msgs.md, summary: '🌤 早安天气 - ' + city, contentType: 3, uids: uids.length > 0 ? uids : undefined, topicIds: topicIds.length > 0 ? topicIds : undefined, verifyPayType: 0 };
-        const resp = await fetch('https://wxpusher.zjiecode.com/api/send/message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!appToken)
+          return { channel: "WxPusher", skipped: true };
+        const uids = (env.WXPUSHER_UIDS || "").split(/[,，\s]+/).map((s) => s.trim()).filter(Boolean);
+        const topicIds = (env.WXPUSHER_TOPIC_IDS || "").split(/[,，\s]+/).map((s) => parseInt(s.trim())).filter((n) => !isNaN(n));
+        if (uids.length === 0 && topicIds.length === 0)
+          throw new Error("WxPusher\uFF1A\u8BF7\u914D\u7F6E WXPUSHER_UIDS \u6216 WXPUSHER_TOPIC_IDS");
+        const body = { appToken, content: msgs.md, summary: "\u{1F324} \u65E9\u5B89\u5929\u6C14 - " + city, contentType: 3, uids: uids.length > 0 ? uids : void 0, topicIds: topicIds.length > 0 ? topicIds : void 0, verifyPayType: 0 };
+        const resp = await fetch("https://wxpusher.zjiecode.com/api/send/message", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
         const d = await resp.json();
-        if (d.code !== 1000) throw new Error('WxPusher天气推送失败: ' + d.msg);
-        return { channel: 'WxPusher', ok: true };
-      },
+        if (d.code !== 1e3)
+          throw new Error("WxPusher\u5929\u6C14\u63A8\u9001\u5931\u8D25: " + d.msg);
+        return { channel: "WxPusher", ok: true };
+      }
     },
     {
-      name: 'ntfy',
+      name: "ntfy",
       fn: async () => {
         const ntfyUrl = env.NTFY_URL;
-        if (!ntfyUrl) return { channel: 'ntfy', skipped: true };
-        const headers = { 'Title': '🌤 早安天气 - ' + city, 'Priority': 'default', 'Tags': 'sunny', 'Content-Type': 'text/plain; charset=utf-8' };
-        if (env.NTFY_TOKEN) headers['Authorization'] = 'Bearer ' + env.NTFY_TOKEN;
-        const resp = await fetch(ntfyUrl, { method: 'POST', headers, body: msgs.plain.slice(0, 4000) });
-        if (!resp.ok) throw new Error('ntfy天气推送失败: HTTP ' + resp.status);
-        return { channel: 'ntfy', ok: true };
-      },
+        if (!ntfyUrl)
+          return { channel: "ntfy", skipped: true };
+        const headers = { "Title": "\u{1F324} \u65E9\u5B89\u5929\u6C14 - " + city, "Priority": "default", "Tags": "sunny", "Content-Type": "text/plain; charset=utf-8" };
+        if (env.NTFY_TOKEN)
+          headers["Authorization"] = "Bearer " + env.NTFY_TOKEN;
+        const resp = await fetch(ntfyUrl, { method: "POST", headers, body: msgs.plain.slice(0, 4e3) });
+        if (!resp.ok)
+          throw new Error("ntfy\u5929\u6C14\u63A8\u9001\u5931\u8D25: HTTP " + resp.status);
+        return { channel: "ntfy", ok: true };
+      }
     },
     {
-      name: 'Gotify',
+      name: "Gotify",
       fn: async () => {
         const gotifyUrl = env.GOTIFY_URL;
         const gotifyToken = env.GOTIFY_TOKEN;
-        if (!gotifyUrl || !gotifyToken) return { channel: 'Gotify', skipped: true };
-        const resp = await fetch(gotifyUrl.replace(/\/$/, '') + '/message?token=' + encodeURIComponent(gotifyToken), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: '🌤 早安天气 - ' + city, message: msgs.md, priority: 5, extras: { 'client::display': { contentType: 'text/markdown' } } }) });
-        if (!resp.ok) throw new Error('Gotify天气推送失败: HTTP ' + resp.status);
-        return { channel: 'Gotify', ok: true };
-      },
-    },
+        if (!gotifyUrl || !gotifyToken)
+          return { channel: "Gotify", skipped: true };
+        const resp = await fetch(gotifyUrl.replace(/\/$/, "") + "/message?token=" + encodeURIComponent(gotifyToken), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "\u{1F324} \u65E9\u5B89\u5929\u6C14 - " + city, message: msgs.md, priority: 5, extras: { "client::display": { contentType: "text/markdown" } } }) });
+        if (!resp.ok)
+          throw new Error("Gotify\u5929\u6C14\u63A8\u9001\u5931\u8D25: HTTP " + resp.status);
+        return { channel: "Gotify", ok: true };
+      }
+    }
   ];
-
-  // 重试模式只跑上次失败的渠道，正常模式跑全部
-  const pushers = isRetry
-    ? allPushers.filter(p => failedChannels.includes(p.name))
-    : allPushers;
-
-  const results = await Promise.allSettled(pushers.map(p => p.fn()));
-
-  // 统计失败渠道（排除"未配置"的跳过项，跳过不算失败）
+  const pushers = isRetry ? allPushers.filter((p) => failedChannels.includes(p.name)) : allPushers;
+  const results = await Promise.allSettled(pushers.map((p) => p.fn()));
   const newFailedChannels = [];
   const summary = results.map((r, i) => {
-    if (r.status === 'fulfilled') {
+    if (r.status === "fulfilled") {
       const v = r.value;
-      if (v.skipped) return v.channel + ':未配置';
-      return v.channel + ':✅';
+      if (v.skipped)
+        return v.channel + ":\u672A\u914D\u7F6E";
+      return v.channel + ":\u2705";
     }
     newFailedChannels.push(pushers[i].name);
-    return pushers[i].name + ':❌(' + (r.reason?.message || '未知') + ')';
+    return pushers[i].name + ":\u274C(" + (r.reason?.message || "\u672A\u77E5") + ")";
   });
-
-  // 有失败渠道 → 写入 KV（TTL 到当天结束，约 23h），等待下次 cron 自动重试
-  // 全部成功 → 清除失败记录
   if (newFailedChannels.length > 0) {
     try {
-      await env.NEWS_CONFIG.put(WEATHER_FAILED_KEY, JSON.stringify(newFailedChannels), { expirationTtl: 82800 }); // 23h
-    } catch {}
+      await env.NEWS_CONFIG.put(WEATHER_FAILED_KEY, JSON.stringify(newFailedChannels), { expirationTtl: 82800 });
+    } catch {
+    }
   } else {
-    try { await env.NEWS_CONFIG.delete(WEATHER_FAILED_KEY); } catch {}
+    try {
+      await env.NEWS_CONFIG.delete(WEATHER_FAILED_KEY);
+    } catch {
+    }
   }
-
-  const anySuccess = results.some(r => r.status === 'fulfilled' && r.value?.ok);
-
-  // 首次推送时只要有一个渠道成功，就记录今日已推（避免重推成功渠道）
+  const anySuccess = results.some((r) => r.status === "fulfilled" && r.value?.ok);
   if (!isRetry && anySuccess) {
-    const today = new Date().toISOString().slice(0, 10);
-    try { await env.NEWS_CONFIG.put('weather_lastRun_' + today, '1', { expirationTtl: 86400 }); } catch {}
+    const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    try {
+      await env.NEWS_CONFIG.put("weather_lastRun_" + today, "1", { expirationTtl: 86400 });
+    } catch {
+    }
   }
-
   return { ok: anySuccess, summary, failedChannels: newFailedChannels };
 }
-
-
+__name(runWeatherPush, "runWeatherPush");
 async function runAllPush(env, config, { isRetry = false } = {}) {
-  // 优化⑥：重试模式，先读取失败渠道，若无则提前返回，避免无谓构建 payload
   let failedChannels = [];
   if (isRetry) {
     try {
-      const raw = await env.NEWS_CONFIG.get('push_failed_channels');
+      const raw = await env.NEWS_CONFIG.get("push_failed_channels");
       failedChannels = raw ? JSON.parse(raw) : [];
-    } catch {}
-    if (failedChannels.length === 0) return { count: 0, summary: ['无待重试渠道'] };
+    } catch {
+    }
+    if (failedChannels.length === 0)
+      return { count: 0, summary: ["\u65E0\u5F85\u91CD\u8BD5\u6E20\u9053"] };
   }
-
   const payload = await buildPlainMessage(env, config);
-
   const allPushers = [
-    { name: 'Telegram',   fn: pushTelegram },
-    { name: '飞书',        fn: pushFeishu },
-    { name: '钉钉',        fn: pushDingtalk },
-    { name: '企业微信',    fn: pushWecom },
-    { name: 'PushPlus',   fn: pushPushPlus },
-    { name: 'Bark',        fn: pushBark },
-    { name: 'WxPusher',   fn: pushWxPusher },
-    { name: 'ntfy',        fn: pushNtfy },
-    { name: 'Gotify',      fn: pushGotify },
+    { name: "Telegram", fn: pushTelegram },
+    { name: "\u98DE\u4E66", fn: pushFeishu },
+    { name: "\u9489\u9489", fn: pushDingtalk },
+    { name: "\u4F01\u4E1A\u5FAE\u4FE1", fn: pushWecom },
+    { name: "PushPlus", fn: pushPushPlus },
+    { name: "Bark", fn: pushBark },
+    { name: "WxPusher", fn: pushWxPusher },
+    { name: "ntfy", fn: pushNtfy },
+    { name: "Gotify", fn: pushGotify }
   ];
-
-  // 重试模式只跑上次失败的渠道
-  const pushers = isRetry
-    ? allPushers.filter(p => failedChannels.includes(p.name))
-    : allPushers;
-
+  const pushers = isRetry ? allPushers.filter((p) => failedChannels.includes(p.name)) : allPushers;
   const results = await Promise.allSettled(
-    pushers.map(p => p.fn(env, config, payload))
+    pushers.map((p) => p.fn(env, config, payload))
   );
-
   const newFailedChannels = [];
   const summary = results.map((r, i) => {
-    if (r.status === 'fulfilled') {
+    if (r.status === "fulfilled") {
       const v = r.value;
-      if (v.skipped) return v.channel + ':未配置';
-      return v.channel + ':✅';
+      if (v.skipped)
+        return v.channel + ":\u672A\u914D\u7F6E";
+      return v.channel + ":\u2705";
     }
-    // 记录失败渠道，供下次重试
     newFailedChannels.push(pushers[i].name);
-    return pushers[i].name + ':❌(' + (r.reason?.message || '未知错误') + ')';
+    return pushers[i].name + ":\u274C(" + (r.reason?.message || "\u672A\u77E5\u9519\u8BEF") + ")";
   });
-
-  // 优化⑥：保存失败渠道列表（TTL 2小时，超时自动清除）
   if (newFailedChannels.length > 0) {
-    try { await env.NEWS_CONFIG.put('push_failed_channels', JSON.stringify(newFailedChannels), { expirationTtl: 7200 }); } catch {}
+    try {
+      await env.NEWS_CONFIG.put("push_failed_channels", JSON.stringify(newFailedChannels), { expirationTtl: 7200 });
+    } catch {
+    }
   } else {
-    try { await env.NEWS_CONFIG.delete('push_failed_channels'); } catch {}
+    try {
+      await env.NEWS_CONFIG.delete("push_failed_channels");
+    } catch {
+    }
   }
-
-  // 优化①：推送成功后保存已推标题（不管是否全部渠道成功，只要有一个成功就记录）
-  const anySuccess = results.some(r => r.status === 'fulfilled' && !r.value?.skipped);
+  const anySuccess = results.some((r) => r.status === "fulfilled" && !r.value?.skipped);
   if (anySuccess) {
-    await savePushedTitles(env, payload.items.map(i => i.title), payload.pushedTitles);
+    await savePushedTitles(env, payload.items.map((i) => i.title), payload.pushedTitles);
   }
-
   return { count: payload.items.length, summary };
 }
-
+__name(runAllPush, "runAllPush");
 async function runNewsPush(env) {
   const config = await getConfig(env);
-
-  // 获取北京时间的小时和分钟
-  const now = new Date();
-  const bjTimeStr = now.toLocaleString('en-US', { timeZone: 'Asia/Shanghai', hour: 'numeric', minute: 'numeric', hour12: false });
-  const [hourStr, minuteStr] = bjTimeStr.split(':');
-  const hour   = parseInt(hourStr);
+  const now = /* @__PURE__ */ new Date();
+  const bjTimeStr = now.toLocaleString("en-US", { timeZone: "Asia/Shanghai", hour: "numeric", minute: "numeric", hour12: false });
+  const [hourStr, minuteStr] = bjTimeStr.split(":");
+  const hour = parseInt(hourStr);
   const minute = parseInt(minuteStr);
-
-  // ── 天气推送失败重试：每次 cron 触发时检查，有失败渠道就继续重试 ──
   try {
     const weatherFailed = await env.NEWS_CONFIG.get(WEATHER_FAILED_KEY);
     if (weatherFailed) {
       await runWeatherPush(env, config, { isRetry: true });
     }
-  } catch {}
-
-  // ── 天气正常推送：每天 7:30 北京时间（允许 ±5 分钟窗口） ──
+  } catch {
+  }
   if (hour === 7 && minute >= 25 && minute <= 35) {
     await runWeatherPush(env, config);
   }
-
-  if (!config.enabled) return;
-
-  const pushHours = String(config.pushHours || config.pushHour || '8')
-    .split(/[,，\s]+/).map(h => parseInt(h.trim())).filter(h => !isNaN(h));
-
+  if (!config.enabled)
+    return;
+  const pushHours = String(config.pushHours || config.pushHour || "8").split(/[,，\s]+/).map((h) => parseInt(h.trim())).filter((h) => !isNaN(h));
   const today = now.toISOString().slice(0, 10);
-  const runKey = 'lastRun_' + today + '_' + hour;
-
-  // 检查是否有新闻推送失败渠道需要重试
+  const runKey = "lastRun_" + today + "_" + hour;
   let failedRaw = null;
-  try { failedRaw = await env.NEWS_CONFIG.get('push_failed_channels'); } catch {}
+  try {
+    failedRaw = await env.NEWS_CONFIG.get("push_failed_channels");
+  } catch {
+  }
   if (failedRaw) {
     await runAllPush(env, config, { isRetry: true });
   }
-
-  if (!pushHours.includes(hour)) return;
+  if (!pushHours.includes(hour))
+    return;
   const lastRun = await env.NEWS_CONFIG.get(runKey);
-  if (lastRun) return;
-
+  if (lastRun)
+    return;
   await runAllPush(env, config);
-  await env.NEWS_CONFIG.put(runKey, '1');
+  await env.NEWS_CONFIG.put(runKey, "1");
 }
-
+__name(runNewsPush, "runNewsPush");
 async function handleTestPush(env) {
   try {
     const config = await getConfig(env);
     const { count, summary } = await runAllPush(env, config);
-    return Response.json({ success: true, message: '推送完成！共 ' + count + ' 条\n' + summary.join(' | ') });
-  } catch (e) { return Response.json({ success: false, message: e.message }, { status: 500 }); }
+    return Response.json({ success: true, message: "\u63A8\u9001\u5B8C\u6210\uFF01\u5171 " + count + " \u6761\n" + summary.join(" | ") });
+  } catch (e) {
+    return Response.json({ success: false, message: e.message }, { status: 500 });
+  }
 }
-
+__name(handleTestPush, "handleTestPush");
 async function handleTestWeather(env) {
   try {
     const config = await getConfig(env);
     const city = config.weatherCity?.trim();
-    if (!city) return Response.json({ success: false, message: '请先在推送设置中填写城市名称并保存' });
+    if (!city)
+      return Response.json({ success: false, message: "\u8BF7\u5148\u5728\u63A8\u9001\u8BBE\u7F6E\u4E2D\u586B\u5199\u57CE\u5E02\u540D\u79F0\u5E76\u4FDD\u5B58" });
     const data = await fetchWeather(city);
-    if (!data) return Response.json({ success: false, message: '天气数据获取失败，请检查城市名称（支持中文或英文，如"北京"/"Beijing"）' });
+    if (!data)
+      return Response.json({ success: false, message: '\u5929\u6C14\u6570\u636E\u83B7\u53D6\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u57CE\u5E02\u540D\u79F0\uFF08\u652F\u6301\u4E2D\u6587\u6216\u82F1\u6587\uFF0C\u5982"\u5317\u4EAC"/"Beijing"\uFF09' });
     const msgs = buildWeatherMessage(city, data);
-    if (!msgs) return Response.json({ success: false, message: '天气数据解析失败' });
-    // 测试模式：清除今日防重推记录和失败渠道记录，确保能推送
-    try { await env.NEWS_CONFIG.delete('weather_lastRun_' + new Date().toISOString().slice(0, 10)); } catch {}
-    try { await env.NEWS_CONFIG.delete(WEATHER_FAILED_KEY); } catch {}
+    if (!msgs)
+      return Response.json({ success: false, message: "\u5929\u6C14\u6570\u636E\u89E3\u6790\u5931\u8D25" });
+    try {
+      await env.NEWS_CONFIG.delete("weather_lastRun_" + (/* @__PURE__ */ new Date()).toISOString().slice(0, 10));
+    } catch {
+    }
+    try {
+      await env.NEWS_CONFIG.delete(WEATHER_FAILED_KEY);
+    } catch {
+    }
     const result = await runWeatherPush(env, config);
-    if (result.skipped) return Response.json({ success: false, message: result.reason });
-    return Response.json({ success: result.ok, message: '天气推送完成！\n' + (result.summary || []).join(' | '), preview: msgs.plain });
-  } catch (e) { return Response.json({ success: false, message: e.message }, { status: 500 }); }
+    if (result.skipped)
+      return Response.json({ success: false, message: result.reason });
+    return Response.json({ success: result.ok, message: "\u5929\u6C14\u63A8\u9001\u5B8C\u6210\uFF01\n" + (result.summary || []).join(" | "), preview: msgs.plain });
+  } catch (e) {
+    return Response.json({ success: false, message: e.message }, { status: 500 });
+  }
 }
-
-// ============================================================
-// 前端 HTML
-// ============================================================
+__name(handleTestWeather, "handleTestWeather");
 function buildScript() {
   return `
 var currentCategory = 'general';
 var sidebarOpen = window.innerWidth > 900;
 
 var CATEGORIES = {
-  general:       {label:'综合新闻',   icon:'📰', group:'综合'},
-  world:         {label:'国际',       icon:'🌍', group:'时事'},
-  china:         {label:'两岸三地',   icon:'🇨🇳', group:'时事'},
-  politics:      {label:'政治',       icon:'🏛️', group:'时事'},
-  society:       {label:'社会',       icon:'👥', group:'时事'},
-  business:      {label:'财经',       icon:'💹', group:'财经'},
-  markets:       {label:'股市',       icon:'📈', group:'财经'},
-  property:      {label:'房产',       icon:'🏠', group:'财经'},
-  technology:    {label:'科技',       icon:'💻', group:'科技'},
-  ai:            {label:'AI 人工智能',icon:'🤖', group:'科技'},
-  health:        {label:'健康医疗',   icon:'❤️', group:'生活'},
-  entertainment: {label:'娱乐',       icon:'🎬', group:'生活'},
-  sports:        {label:'体育',       icon:'⚽', group:'生活'},
-  science:       {label:'科学',       icon:'🔬', group:'生活'},
-  culture:       {label:'文化艺术',   icon:'🎨', group:'生活'},
-  travel:        {label:'旅游',       icon:'✈️', group:'生活'},
+  general:       {label:'\u7EFC\u5408\u65B0\u95FB',   icon:'\u{1F4F0}', group:'\u7EFC\u5408'},
+  world:         {label:'\u56FD\u9645',       icon:'\u{1F30D}', group:'\u65F6\u4E8B'},
+  china:         {label:'\u4E24\u5CB8\u4E09\u5730',   icon:'\u{1F1E8}\u{1F1F3}', group:'\u65F6\u4E8B'},
+  politics:      {label:'\u653F\u6CBB',       icon:'\u{1F3DB}\uFE0F', group:'\u65F6\u4E8B'},
+  society:       {label:'\u793E\u4F1A',       icon:'\u{1F465}', group:'\u65F6\u4E8B'},
+  business:      {label:'\u8D22\u7ECF',       icon:'\u{1F4B9}', group:'\u8D22\u7ECF'},
+  markets:       {label:'\u80A1\u5E02',       icon:'\u{1F4C8}', group:'\u8D22\u7ECF'},
+  property:      {label:'\u623F\u4EA7',       icon:'\u{1F3E0}', group:'\u8D22\u7ECF'},
+  technology:    {label:'\u79D1\u6280',       icon:'\u{1F4BB}', group:'\u79D1\u6280'},
+  ai:            {label:'AI \u4EBA\u5DE5\u667A\u80FD',icon:'\u{1F916}', group:'\u79D1\u6280'},
+  health:        {label:'\u5065\u5EB7\u533B\u7597',   icon:'\u2764\uFE0F', group:'\u751F\u6D3B'},
+  entertainment: {label:'\u5A31\u4E50',       icon:'\u{1F3AC}', group:'\u751F\u6D3B'},
+  sports:        {label:'\u4F53\u80B2',       icon:'\u26BD', group:'\u751F\u6D3B'},
+  science:       {label:'\u79D1\u5B66',       icon:'\u{1F52C}', group:'\u751F\u6D3B'},
+  culture:       {label:'\u6587\u5316\u827A\u672F',   icon:'\u{1F3A8}', group:'\u751F\u6D3B'},
+  travel:        {label:'\u65C5\u6E38',       icon:'\u2708\uFE0F', group:'\u751F\u6D3B'},
 };
 
 var SOURCE_LIST = {
-  hk01:{label:'香港01',flag:'🇭🇰',region:'香港'},
-  mingpao:{label:'明报',flag:'🇭🇰',region:'香港'},
-  orientaldaily:{label:'东方日报',flag:'🇭🇰',region:'香港'},
-  appledaily_tw:{label:'自由时报',flag:'🇹🇼',region:'台湾'},
-  udn:{label:'联合新闻网',flag:'🇹🇼',region:'台湾'},
-  cna:{label:'中央社',flag:'🇹🇼',region:'台湾'},
-  rti:{label:'中央广播电台',flag:'🇹🇼',region:'台湾'},
-  rfa:{label:'自由亚洲电台',flag:'🌏',region:'海外'},
-  voachinese:{label:'美国之音中文',flag:'🇺🇸',region:'海外'},
-  bbc_chinese:{label:'BBC中文(简)',flag:'🇬🇧',region:'海外'},
-  bbc_trad:{label:'BBC中文(繁)',flag:'🇬🇧',region:'海外'},
-  initium:{label:'端传媒',flag:'🌐',region:'海外'},
-  dwnews:{label:'德国之声中文',flag:'🇩🇪',region:'海外'},
-  googlezh:{label:'Google新闻',flag:'🔍',region:'聚合'},
-  chosun:{label:'朝鲜日报中文',flag:'🇰🇷',region:'海外'},
-  zaobao:{label:'联合早报',flag:'🇸🇬',region:'海外'},
-  duowei:{label:'多维新闻',flag:'🌐',region:'海外'},
-  singtao:{label:'星岛日报',flag:'🇭🇰',region:'香港'},
-  hkej:{label:'信报',flag:'🇭🇰',region:'香港'},
-  storm:{label:'风传媒',flag:'🇹🇼',region:'台湾'},
-  thenewslens:{label:'关键评论网',flag:'🇹🇼',region:'台湾'},
-  ettoday:{label:'ETtoday',flag:'🇹🇼',region:'台湾'},
-  setn:{label:'三立新闻',flag:'🇹🇼',region:'台湾'},
+  hk01:{label:'\u9999\u6E2F01',flag:'\u{1F1ED}\u{1F1F0}',region:'\u9999\u6E2F'},
+  mingpao:{label:'\u660E\u62A5',flag:'\u{1F1ED}\u{1F1F0}',region:'\u9999\u6E2F'},
+  orientaldaily:{label:'\u4E1C\u65B9\u65E5\u62A5',flag:'\u{1F1ED}\u{1F1F0}',region:'\u9999\u6E2F'},
+  appledaily_tw:{label:'\u81EA\u7531\u65F6\u62A5',flag:'\u{1F1F9}\u{1F1FC}',region:'\u53F0\u6E7E'},
+  udn:{label:'\u8054\u5408\u65B0\u95FB\u7F51',flag:'\u{1F1F9}\u{1F1FC}',region:'\u53F0\u6E7E'},
+  cna:{label:'\u4E2D\u592E\u793E',flag:'\u{1F1F9}\u{1F1FC}',region:'\u53F0\u6E7E'},
+  rti:{label:'\u4E2D\u592E\u5E7F\u64AD\u7535\u53F0',flag:'\u{1F1F9}\u{1F1FC}',region:'\u53F0\u6E7E'},
+  rfa:{label:'\u81EA\u7531\u4E9A\u6D32\u7535\u53F0',flag:'\u{1F30F}',region:'\u6D77\u5916'},
+  voachinese:{label:'\u7F8E\u56FD\u4E4B\u97F3\u4E2D\u6587',flag:'\u{1F1FA}\u{1F1F8}',region:'\u6D77\u5916'},
+  bbc_chinese:{label:'BBC\u4E2D\u6587(\u7B80)',flag:'\u{1F1EC}\u{1F1E7}',region:'\u6D77\u5916'},
+  bbc_trad:{label:'BBC\u4E2D\u6587(\u7E41)',flag:'\u{1F1EC}\u{1F1E7}',region:'\u6D77\u5916'},
+  initium:{label:'\u7AEF\u4F20\u5A92',flag:'\u{1F310}',region:'\u6D77\u5916'},
+  dwnews:{label:'\u5FB7\u56FD\u4E4B\u58F0\u4E2D\u6587',flag:'\u{1F1E9}\u{1F1EA}',region:'\u6D77\u5916'},
+  googlezh:{label:'Google\u65B0\u95FB',flag:'\u{1F50D}',region:'\u805A\u5408'},
+  chosun:{label:'\u671D\u9C9C\u65E5\u62A5\u4E2D\u6587',flag:'\u{1F1F0}\u{1F1F7}',region:'\u6D77\u5916'},
+  zaobao:{label:'\u8054\u5408\u65E9\u62A5',flag:'\u{1F1F8}\u{1F1EC}',region:'\u6D77\u5916'},
+  duowei:{label:'\u591A\u7EF4\u65B0\u95FB',flag:'\u{1F310}',region:'\u6D77\u5916'},
+  singtao:{label:'\u661F\u5C9B\u65E5\u62A5',flag:'\u{1F1ED}\u{1F1F0}',region:'\u9999\u6E2F'},
+  hkej:{label:'\u4FE1\u62A5',flag:'\u{1F1ED}\u{1F1F0}',region:'\u9999\u6E2F'},
+  storm:{label:'\u98CE\u4F20\u5A92',flag:'\u{1F1F9}\u{1F1FC}',region:'\u53F0\u6E7E'},
+  thenewslens:{label:'\u5173\u952E\u8BC4\u8BBA\u7F51',flag:'\u{1F1F9}\u{1F1FC}',region:'\u53F0\u6E7E'},
+  ettoday:{label:'ETtoday',flag:'\u{1F1F9}\u{1F1FC}',region:'\u53F0\u6E7E'},
+  setn:{label:'\u4E09\u7ACB\u65B0\u95FB',flag:'\u{1F1F9}\u{1F1FC}',region:'\u53F0\u6E7E'},
 };
 
 var config = {};
@@ -1341,7 +1333,7 @@ async function loadConfig() {
 
 function applyConfigToUI() {
   var pushCats = config.pushCategories || (config.pushCategory ? [config.pushCategory] : ['general']);
-  // 回填推送分类 chip 选中状态
+  // \u56DE\u586B\u63A8\u9001\u5206\u7C7B chip \u9009\u4E2D\u72B6\u6001
   document.querySelectorAll('.pcat-chip').forEach(function(el) {
     el.classList.toggle('pcat-active', pushCats.includes(el.dataset.cat));
   });
@@ -1395,10 +1387,10 @@ function selectCategory(cat) {
   loadNews();
 }
 
-// chip 点击切换
+// chip \u70B9\u51FB\u5207\u6362
 window.togglePushCat = function(el) {
   el.classList.toggle('pcat-active');
-  // 至少保留一个选中
+  // \u81F3\u5C11\u4FDD\u7559\u4E00\u4E2A\u9009\u4E2D
   var actives = document.querySelectorAll('.pcat-chip.pcat-active');
   if (actives.length === 0) el.classList.add('pcat-active');
 };
@@ -1429,7 +1421,7 @@ async function saveConfig() {
 }
 
 async function testPush() {
-  showToast('正在推送，请稍候...', 'info');
+  showToast('\u6B63\u5728\u63A8\u9001\uFF0C\u8BF7\u7A0D\u5019...', 'info');
   var r = await fetch('/api/test', {method:'POST'});
   var d = await r.json();
   showToast(d.message, d.success ? 'success' : 'error');
@@ -1437,9 +1429,9 @@ async function testPush() {
 
 async function testWeather() {
   var city = document.getElementById('weather-city-input').value.trim();
-  if (!city) { showToast('请先填写城市名称', 'error'); return; }
-  showToast('正在获取天气并推送，请稍候...', 'info');
-  // 先保存当前配置（确保城市名已写入 KV）
+  if (!city) { showToast('\u8BF7\u5148\u586B\u5199\u57CE\u5E02\u540D\u79F0', 'error'); return; }
+  showToast('\u6B63\u5728\u83B7\u53D6\u5929\u6C14\u5E76\u63A8\u9001\uFF0C\u8BF7\u7A0D\u5019...', 'info');
+  // \u5148\u4FDD\u5B58\u5F53\u524D\u914D\u7F6E\uFF08\u786E\u4FDD\u57CE\u5E02\u540D\u5DF2\u5199\u5165 KV\uFF09
   await saveConfig();
   var r = await fetch('/api/weather-test', {method:'POST'});
   var d = await r.json();
@@ -1449,14 +1441,14 @@ window.testWeather = testWeather;
 
 async function loadNews() {
   var area = document.getElementById('news-area');
-  area.innerHTML = '<div class="loading"><div class="spinner"></div><p>正在抓取新闻...</p></div>';
+  area.innerHTML = '<div class="loading"><div class="spinner"></div><p>\u6B63\u5728\u6293\u53D6\u65B0\u95FB...</p></div>';
   try {
     var r = await fetch('/api/news?cat=' + encodeURIComponent(currentCategory));
     var d = await r.json();
-    if (!d.success) { area.innerHTML = '<div class="error-msg">获取失败：' + d.message + '</div>'; return; }
+    if (!d.success) { area.innerHTML = '<div class="error-msg">\u83B7\u53D6\u5931\u8D25\uFF1A' + d.message + '</div>'; return; }
     renderNews(d);
   } catch(e) {
-    area.innerHTML = '<div class="error-msg">网络错误，请刷新重试</div>';
+    area.innerHTML = '<div class="error-msg">\u7F51\u7EDC\u9519\u8BEF\uFF0C\u8BF7\u5237\u65B0\u91CD\u8BD5</div>';
   }
 }
 
@@ -1465,34 +1457,34 @@ function timeAgo(dateStr) {
   try {
     var diff = Date.now() - new Date(dateStr).getTime();
     var m = Math.floor(diff/60000);
-    if (m < 1) return '刚刚';
-    if (m < 60) return m + '分钟前';
+    if (m < 1) return '\u521A\u521A';
+    if (m < 60) return m + '\u5206\u949F\u524D';
     var h = Math.floor(m/60);
-    if (h < 24) return h + '小时前';
-    return Math.floor(h/24) + '天前';
+    if (h < 24) return h + '\u5C0F\u65F6\u524D';
+    return Math.floor(h/24) + '\u5929\u524D';
   } catch(e) { return ''; }
 }
 
 function renderNews(data) {
   var area = document.getElementById('news-area');
-  var catTitle = data.category || '综合新闻';
+  var catTitle = data.category || '\u7EFC\u5408\u65B0\u95FB';
   var html = '';
 
-  // 页面标题栏
+  // \u9875\u9762\u6807\u9898\u680F
   html += '<div class="news-header">';
-  html += '<h1 class="news-title">📰 ' + catTitle + '</h1>';
-  html += '<span class="news-count">' + data.items.length + ' 条新闻</span>';
+  html += '<h1 class="news-title">\u{1F4F0} ' + catTitle + '</h1>';
+  html += '<span class="news-count">' + data.items.length + ' \u6761\u65B0\u95FB</span>';
   html += '</div>';
 
-  // AI 摘要卡片
+  // AI \u6458\u8981\u5361\u7247
   if (data.summary) {
     html += '<div class="summary-card">';
-    html += '<div class="summary-header"><span class="ai-badge">🤖 AI 摘要</span></div>';
+    html += '<div class="summary-header"><span class="ai-badge">\u{1F916} AI \u6458\u8981</span></div>';
     html += '<div class="summary-body">' + data.summary.replace(/\\n/g,'<br>') + '</div>';
     html += '</div>';
   }
 
-  // 新闻卡片网格
+  // \u65B0\u95FB\u5361\u7247\u7F51\u683C
   html += '<div class="news-grid">';
   data.items.forEach(function(item, i) {
     var ago = timeAgo(item.pubDate);
@@ -1528,14 +1520,14 @@ window.selectCategory = selectCategory;
 window.saveConfig = saveConfig;
 window.testPush = testPush;
 
-// ── 折叠块 ──
+// \u2500\u2500 \u6298\u53E0\u5757 \u2500\u2500
 var BLOCK_IDS = ['blk-sources', 'blk-settings', 'blk-channels'];
 
 window.toggleBlock = function(id) {
   var el = document.getElementById(id);
   if (!el) return;
   var isOpen = el.classList.toggle('open');
-  // 记住状态到 localStorage
+  // \u8BB0\u4F4F\u72B6\u6001\u5230 localStorage
   try {
     var state = JSON.parse(localStorage.getItem('collapse_state') || '{}');
     state[id] = isOpen;
@@ -1549,7 +1541,7 @@ function initCollapseBlocks() {
   BLOCK_IDS.forEach(function(id) {
     var el = document.getElementById(id);
     if (!el) return;
-    // 默认全部收起，除非 localStorage 里有记录为 true
+    // \u9ED8\u8BA4\u5168\u90E8\u6536\u8D77\uFF0C\u9664\u975E localStorage \u91CC\u6709\u8BB0\u5F55\u4E3A true
     if (state[id] === true) el.classList.add('open');
   });
 }
@@ -1566,33 +1558,33 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 });
 
-// ── 时钟 ──
+// \u2500\u2500 \u65F6\u949F \u2500\u2500
 function lunarDate(date) {
-  // 农历干支速查（1900-2100简化算法）
-  var lunarMonths = ['正','二','三','四','五','六','七','八','九','十','冬','腊'];
-  var lunarDays = ['初一','初二','初三','初四','初五','初六','初七','初八','初九','初十',
-    '十一','十二','十三','十四','十五','十六','十七','十八','十九','二十',
-    '廿一','廿二','廿三','廿四','廿五','廿六','廿七','廿八','廿九','三十'];
-  var heavenly = ['甲','乙','丙','丁','戊','己','庚','辛','壬','癸'];
-  var earthly  = ['子','丑','寅','卯','辰','巳','午','未','申','酉','戌','亥'];
-  var animals  = ['鼠','牛','虎','兔','龙','蛇','马','羊','猴','鸡','狗','猪'];
-  // 基准：1900年1月31日为农历正月初一（庚子年）
+  // \u519C\u5386\u5E72\u652F\u901F\u67E5\uFF081900-2100\u7B80\u5316\u7B97\u6CD5\uFF09
+  var lunarMonths = ['\u6B63','\u4E8C','\u4E09','\u56DB','\u4E94','\u516D','\u4E03','\u516B','\u4E5D','\u5341','\u51AC','\u814A'];
+  var lunarDays = ['\u521D\u4E00','\u521D\u4E8C','\u521D\u4E09','\u521D\u56DB','\u521D\u4E94','\u521D\u516D','\u521D\u4E03','\u521D\u516B','\u521D\u4E5D','\u521D\u5341',
+    '\u5341\u4E00','\u5341\u4E8C','\u5341\u4E09','\u5341\u56DB','\u5341\u4E94','\u5341\u516D','\u5341\u4E03','\u5341\u516B','\u5341\u4E5D','\u4E8C\u5341',
+    '\u5EFF\u4E00','\u5EFF\u4E8C','\u5EFF\u4E09','\u5EFF\u56DB','\u5EFF\u4E94','\u5EFF\u516D','\u5EFF\u4E03','\u5EFF\u516B','\u5EFF\u4E5D','\u4E09\u5341'];
+  var heavenly = ['\u7532','\u4E59','\u4E19','\u4E01','\u620A','\u5DF1','\u5E9A','\u8F9B','\u58EC','\u7678'];
+  var earthly  = ['\u5B50','\u4E11','\u5BC5','\u536F','\u8FB0','\u5DF3','\u5348','\u672A','\u7533','\u9149','\u620C','\u4EA5'];
+  var animals  = ['\u9F20','\u725B','\u864E','\u5154','\u9F99','\u86C7','\u9A6C','\u7F8A','\u7334','\u9E21','\u72D7','\u732A'];
+  // \u57FA\u51C6\uFF1A1900\u5E741\u670831\u65E5\u4E3A\u519C\u5386\u6B63\u6708\u521D\u4E00\uFF08\u5E9A\u5B50\u5E74\uFF09
   var baseDate = new Date(1900, 0, 31);
   var offset = Math.floor((date - baseDate) / 86400000);
-  // 简化：用平均农历月29.5306天估算
+  // \u7B80\u5316\uFF1A\u7528\u5E73\u5747\u519C\u5386\u670829.5306\u5929\u4F30\u7B97
   var totalDays = offset;
-  // 粗算年
+  // \u7C97\u7B97\u5E74
   var approxYear = Math.floor(totalDays / 365.25) + 1900;
-  // 干支
+  // \u5E72\u652F
   var yearOffset = approxYear - 1900;
   var stem = heavenly[((yearOffset % 10) + 10) % 10];
   var branch = earthly[((yearOffset % 12) + 12) % 12];
   var animal = animals[((yearOffset % 12) + 12) % 12];
-  // 粗算月日（用近似值展示，满足日常需求）
+  // \u7C97\u7B97\u6708\u65E5\uFF08\u7528\u8FD1\u4F3C\u503C\u5C55\u793A\uFF0C\u6EE1\u8DB3\u65E5\u5E38\u9700\u6C42\uFF09
   var dayInYear = totalDays % 354;
   var month = Math.min(11, Math.floor(dayInYear / 29.5));
   var day = Math.min(29, Math.floor(dayInYear % 29.5));
-  return stem + branch + '年（' + animal + '年）' + lunarMonths[month] + '月' + lunarDays[day];
+  return stem + branch + '\u5E74\uFF08' + animal + '\u5E74\uFF09' + lunarMonths[month] + '\u6708' + lunarDays[day];
 }
 
 function updateClock() {
@@ -1600,7 +1592,7 @@ function updateClock() {
   var h = String(now.getHours()).padStart(2,'0');
   var m = String(now.getMinutes()).padStart(2,'0');
   var s = String(now.getSeconds()).padStart(2,'0');
-  var weeks = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
+  var weeks = ['\u661F\u671F\u65E5','\u661F\u671F\u4E00','\u661F\u671F\u4E8C','\u661F\u671F\u4E09','\u661F\u671F\u56DB','\u661F\u671F\u4E94','\u661F\u671F\u516D'];
   var y = now.getFullYear();
   var mo = String(now.getMonth()+1).padStart(2,'0');
   var d = String(now.getDate()).padStart(2,'0');
@@ -1609,18 +1601,18 @@ function updateClock() {
   var weekEl = document.getElementById('clock-week');
   var lunarEl = document.getElementById('clock-lunar');
   if (timeEl) timeEl.textContent = h + ':' + m + ':' + s;
-  if (dateEl) dateEl.textContent = y + '年' + mo + '月' + d + '日';
+  if (dateEl) dateEl.textContent = y + '\u5E74' + mo + '\u6708' + d + '\u65E5';
   if (weekEl) weekEl.textContent = weeks[now.getDay()];
-  if (lunarEl) lunarEl.textContent = '农历 ' + lunarDate(now);
+  if (lunarEl) lunarEl.textContent = '\u519C\u5386 ' + lunarDate(now);
 }
 updateClock();
 setInterval(updateClock, 1000);
 
-// ── 深色/浅色模式 ──
+// \u2500\u2500 \u6DF1\u8272/\u6D45\u8272\u6A21\u5F0F \u2500\u2500
 function applyTheme(dark) {
   document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
   var btn = document.getElementById('theme-btn');
-  if (btn) btn.textContent = dark ? '☀️' : '🌙';
+  if (btn) btn.textContent = dark ? '\u2600\uFE0F' : '\u{1F319}';
 }
 
 function toggleTheme() {
@@ -1631,7 +1623,7 @@ function toggleTheme() {
 }
 
 function initTheme() {
-  // 优先用用户手动选择，否则跟随系统
+  // \u4F18\u5148\u7528\u7528\u6237\u624B\u52A8\u9009\u62E9\uFF0C\u5426\u5219\u8DDF\u968F\u7CFB\u7EDF
   var saved = localStorage.getItem('theme');
   if (saved) {
     applyTheme(saved === 'dark');
@@ -1639,7 +1631,7 @@ function initTheme() {
     var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     applyTheme(prefersDark);
   }
-  // 监听系统主题变化（仅当用户未手动设置时生效）
+  // \u76D1\u542C\u7CFB\u7EDF\u4E3B\u9898\u53D8\u5316\uFF08\u4EC5\u5F53\u7528\u6237\u672A\u624B\u52A8\u8BBE\u7F6E\u65F6\u751F\u6548\uFF09
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
     if (!localStorage.getItem('theme')) applyTheme(e.matches);
   });
@@ -1647,136 +1639,117 @@ function initTheme() {
 initTheme();
 `;
 }
-
+__name(buildScript, "buildScript");
 function renderHTML(config, env) {
   const catOptions = Object.entries(CATEGORIES).map(function(e) {
-    return '<option value="' + e[0] + '"' + (config.category === e[0] ? ' selected' : '') + '>' + e[1].icon + ' ' + e[1].label + '</option>';
-  }).join('');
-
-  // 推送分类多选 chip HTML（服务端渲染选中状态）
-  const pushCats = config.pushCategories
-    || (config.pushCategory ? [config.pushCategory] : ['general']);
-  // 按 group 分组渲染
+    return '<option value="' + e[0] + '"' + (config.category === e[0] ? " selected" : "") + ">" + e[1].icon + " " + e[1].label + "</option>";
+  }).join("");
+  const pushCats = config.pushCategories || (config.pushCategory ? [config.pushCategory] : ["general"]);
   const groups = {};
   Object.entries(CATEGORIES).forEach(([k, v]) => {
-    if (!groups[v.group]) groups[v.group] = [];
+    if (!groups[v.group])
+      groups[v.group] = [];
     groups[v.group].push({ key: k, ...v });
   });
   const pushChips = Object.entries(groups).map(([grpName, cats]) => {
-    const chips = cats.map(c => {
-      const active = pushCats.includes(c.key) ? ' pcat-active' : '';
-      return '<span class="pcat-chip' + active + '" data-cat="' + c.key + '" onclick="togglePushCat(this)">' + c.icon + ' ' + c.label + '</span>';
-    }).join('');
-    return '<div class="pcat-group"><span class="pcat-group-label">' + grpName + '</span>' + chips + '</div>';
-  }).join('');
-
-  // 导航栏：分组显示
+    const chips = cats.map((c) => {
+      const active = pushCats.includes(c.key) ? " pcat-active" : "";
+      return '<span class="pcat-chip' + active + '" data-cat="' + c.key + '" onclick="togglePushCat(this)">' + c.icon + " " + c.label + "</span>";
+    }).join("");
+    return '<div class="pcat-group"><span class="pcat-group-label">' + grpName + "</span>" + chips + "</div>";
+  }).join("");
   const navGroups = {};
   Object.entries(CATEGORIES).forEach(([k, v]) => {
-    if (!navGroups[v.group]) navGroups[v.group] = [];
+    if (!navGroups[v.group])
+      navGroups[v.group] = [];
     navGroups[v.group].push({ key: k, ...v });
   });
   const navItems = Object.entries(navGroups).map(([grpName, cats]) => {
-    const items = cats.map(c =>
-      '<div class="nav-item' + (config.category === c.key ? ' active' : '') + '" data-cat="' + c.key + '" onclick="selectCategory(\'' + c.key + '\')">' +
-        '<span class="nav-icon">' + c.icon + '</span>' +
-        '<span class="nav-label">' + c.label + '</span>' +
-      '</div>'
-    ).join('');
-    return '<div class="nav-group-label">' + grpName + '</div>' + items;
-  }).join('');
-
-  // 推送渠道配置状态检测（服务端渲染）
+    const items = cats.map(
+      (c) => '<div class="nav-item' + (config.category === c.key ? " active" : "") + '" data-cat="' + c.key + `" onclick="selectCategory('` + c.key + `')"><span class="nav-icon">` + c.icon + '</span><span class="nav-label">' + c.label + "</span></div>"
+    ).join("");
+    return '<div class="nav-group-label">' + grpName + "</div>" + items;
+  }).join("");
   const CHANNELS = [
     {
-      icon: '✈️', name: 'Telegram',
+      icon: "\u2708\uFE0F",
+      name: "Telegram",
       vars: [
-        { key: 'TG_TOKEN',   configured: !!(env && env.TG_TOKEN) },
-        { key: 'TG_CHAT_ID', configured: !!(env && env.TG_CHAT_ID) },
-      ],
+        { key: "TG_TOKEN", configured: !!(env && env.TG_TOKEN) },
+        { key: "TG_CHAT_ID", configured: !!(env && env.TG_CHAT_ID) }
+      ]
     },
     {
-      icon: '🪶', name: '飞书',
-      vars: [{ key: 'FEISHU_WEBHOOK', configured: !!(env && env.FEISHU_WEBHOOK) }],
+      icon: "\u{1FAB6}",
+      name: "\u98DE\u4E66",
+      vars: [{ key: "FEISHU_WEBHOOK", configured: !!(env && env.FEISHU_WEBHOOK) }]
     },
     {
-      icon: '📎', name: '钉钉',
+      icon: "\u{1F4CE}",
+      name: "\u9489\u9489",
       vars: [
-        { key: 'DINGTALK_WEBHOOK', configured: !!(env && env.DINGTALK_WEBHOOK) },
-        { key: 'DINGTALK_SECRET',  configured: !!(env && env.DINGTALK_SECRET), optional: true },
-      ],
+        { key: "DINGTALK_WEBHOOK", configured: !!(env && env.DINGTALK_WEBHOOK) },
+        { key: "DINGTALK_SECRET", configured: !!(env && env.DINGTALK_SECRET), optional: true }
+      ]
     },
     {
-      icon: '💼', name: '企业微信',
-      vars: [{ key: 'WECOM_WEBHOOK', configured: !!(env && env.WECOM_WEBHOOK) }],
+      icon: "\u{1F4BC}",
+      name: "\u4F01\u4E1A\u5FAE\u4FE1",
+      vars: [{ key: "WECOM_WEBHOOK", configured: !!(env && env.WECOM_WEBHOOK) }]
     },
     {
-      icon: '➕', name: 'PushPlus',
-      vars: [{ key: 'PUSHPLUS_TOKEN', configured: !!(env && env.PUSHPLUS_TOKEN) }],
+      icon: "\u2795",
+      name: "PushPlus",
+      vars: [{ key: "PUSHPLUS_TOKEN", configured: !!(env && env.PUSHPLUS_TOKEN) }]
     },
     {
-      icon: '🔔', name: 'Bark',
-      vars: [{ key: 'BARK_URL', configured: !!(env && env.BARK_URL) }],
+      icon: "\u{1F514}",
+      name: "Bark",
+      vars: [{ key: "BARK_URL", configured: !!(env && env.BARK_URL) }]
     },
     {
-      icon: '💬', name: 'WxPusher',
+      icon: "\u{1F4AC}",
+      name: "WxPusher",
       vars: [
-        { key: 'WXPUSHER_APP_TOKEN',  configured: !!(env && env.WXPUSHER_APP_TOKEN) },
-        { key: 'WXPUSHER_UIDS',       configured: !!(env && env.WXPUSHER_UIDS),      optional: true },
-        { key: 'WXPUSHER_TOPIC_IDS',  configured: !!(env && env.WXPUSHER_TOPIC_IDS), optional: true },
-      ],
+        { key: "WXPUSHER_APP_TOKEN", configured: !!(env && env.WXPUSHER_APP_TOKEN) },
+        { key: "WXPUSHER_UIDS", configured: !!(env && env.WXPUSHER_UIDS), optional: true },
+        { key: "WXPUSHER_TOPIC_IDS", configured: !!(env && env.WXPUSHER_TOPIC_IDS), optional: true }
+      ]
     },
     {
-      icon: '🔔', name: 'ntfy',
+      icon: "\u{1F514}",
+      name: "ntfy",
       vars: [
-        { key: 'NTFY_URL',   configured: !!(env && env.NTFY_URL) },
-        { key: 'NTFY_TOKEN', configured: !!(env && env.NTFY_TOKEN), optional: true },
-      ],
+        { key: "NTFY_URL", configured: !!(env && env.NTFY_URL) },
+        { key: "NTFY_TOKEN", configured: !!(env && env.NTFY_TOKEN), optional: true }
+      ]
     },
     {
-      icon: '📡', name: 'Gotify',
+      icon: "\u{1F4E1}",
+      name: "Gotify",
       vars: [
-        { key: 'GOTIFY_URL',   configured: !!(env && env.GOTIFY_URL) },
-        { key: 'GOTIFY_TOKEN', configured: !!(env && env.GOTIFY_TOKEN) },
-      ],
-    },
+        { key: "GOTIFY_URL", configured: !!(env && env.GOTIFY_URL) },
+        { key: "GOTIFY_TOKEN", configured: !!(env && env.GOTIFY_TOKEN) }
+      ]
+    }
   ];
-
-  // 判断渠道整体是否已配置（必填项全部有值）
   function isChannelReady(ch) {
-    return ch.vars.filter(v => !v.optional).every(v => v.configured);
+    return ch.vars.filter((v) => !v.optional).every((v) => v.configured);
   }
-
-  // 渲染每个渠道条目
-  const channelItems = CHANNELS.map(ch => {
+  __name(isChannelReady, "isChannelReady");
+  const channelItems = CHANNELS.map((ch) => {
     const ready = isChannelReady(ch);
-    // 变量标签：已配置绿色✓，未配置显示变量名
-    const varTags = ch.vars.map(v => {
+    const varTags = ch.vars.map((v) => {
       if (v.configured) {
-        return '<span class="ch-tag ch-tag-ok">' + v.key + ' ✓</span>';
+        return '<span class="ch-tag ch-tag-ok">' + v.key + " \u2713</span>";
       } else if (v.optional) {
-        return '<span class="ch-tag ch-tag-opt">' + v.key + '<span class="ch-opt-label">可选</span></span>';
+        return '<span class="ch-tag ch-tag-opt">' + v.key + '<span class="ch-opt-label">\u53EF\u9009</span></span>';
       } else {
-        return '<span class="ch-tag ch-tag-missing">' + v.key + '</span>';
+        return '<span class="ch-tag ch-tag-missing">' + v.key + "</span>";
       }
-    }).join('');
-    return (
-      '<div class="push-channel-item' + (ready ? ' ch-ready' : '') + '">' +
-        '<span class="ch-icon">' + ch.icon + '</span>' +
-        '<div class="ch-body">' +
-          '<div class="ch-name-row">' +
-            '<span class="ch-name">' + ch.name + '</span>' +
-            (ready
-              ? '<span class="ch-status ch-status-ok">已配置</span>'
-              : '<span class="ch-status ch-status-off">未配置</span>') +
-          '</div>' +
-          '<div class="ch-vars">' + varTags + '</div>' +
-        '</div>' +
-      '</div>'
-    );
-  }).join('');
-
-
+    }).join("");
+    return '<div class="push-channel-item' + (ready ? " ch-ready" : "") + '"><span class="ch-icon">' + ch.icon + '</span><div class="ch-body"><div class="ch-name-row"><span class="ch-name">' + ch.name + "</span>" + (ready ? '<span class="ch-status ch-status-ok">\u5DF2\u914D\u7F6E</span>' : '<span class="ch-status ch-status-off">\u672A\u914D\u7F6E</span>') + '</div><div class="ch-vars">' + varTags + "</div></div></div>";
+  }).join("");
   const css = `
 :root {
   --bg: #f0f2f5;
@@ -1961,22 +1934,20 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
   .card-desc { display: none; }
 }
 `;
-
   return [
-    '<!DOCTYPE html>',
+    "<!DOCTYPE html>",
     '<html lang="zh-CN">',
-    '<head>',
+    "<head>",
     '<meta charset="UTF-8">',
     '<meta name="viewport" content="width=device-width,initial-scale=1.0">',
-    '<title>中文新闻 Hub</title>',
-    '<style>' + css + '</style>',
-    '</head>',
-    '<body>',
-
+    "<title>\u4E2D\u6587\u65B0\u95FB Hub</title>",
+    "<style>" + css + "</style>",
+    "</head>",
+    "<body>",
     // Top bar
     '<div class="topbar">',
     '  <button class="menu-btn" onclick="toggleSidebar()"><i></i><i></i><i></i></button>',
-    '  <div class="topbar-logo"><span>📰</span>中文新闻 Hub</div>',
+    '  <div class="topbar-logo"><span>\u{1F4F0}</span>\u4E2D\u6587\u65B0\u95FB Hub</div>',
     '  <div class="topbar-clock">',
     '    <span class="clock-time" id="clock-time">--:--:--</span>',
     '    <span class="clock-sep">|</span>',
@@ -1984,126 +1955,112 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
     '    <span class="clock-week" id="clock-week"></span>',
     '    <span class="clock-sep">|</span>',
     '    <span class="clock-lunar" id="clock-lunar"></span>',
-    '  </div>',
+    "  </div>",
     '  <div class="topbar-right">',
-    '    <button class="topbar-btn" id="theme-btn" onclick="toggleTheme()" title="切换暗色/亮色">🌙</button>',
-    '    <button class="topbar-btn" onclick="loadNews()">🔄 刷新</button>',
-    '    <button class="topbar-btn primary" onclick="testPush()">📤 立即推送</button>',
-    '  </div>',
-    '</div>',
-
+    '    <button class="topbar-btn" id="theme-btn" onclick="toggleTheme()" title="\u5207\u6362\u6697\u8272/\u4EAE\u8272">\u{1F319}</button>',
+    '    <button class="topbar-btn" onclick="loadNews()">\u{1F504} \u5237\u65B0</button>',
+    '    <button class="topbar-btn primary" onclick="testPush()">\u{1F4E4} \u7ACB\u5373\u63A8\u9001</button>',
+    "  </div>",
+    "</div>",
     '<div class="overlay" id="overlay"></div>',
-
     '<div class="layout">',
-
     // Sidebar
     '<div class="sidebar" id="sidebar">',
     '  <div class="sidebar-section">',
-    '    <div class="sidebar-section-title">新闻分类</div>',
+    '    <div class="sidebar-section-title">\u65B0\u95FB\u5206\u7C7B</div>',
     navItems,
-    '  </div>',
-
+    "  </div>",
     '  <div class="settings-panel">',
-
     // ── 折叠块 1：新闻来源 ──
     '    <div class="collapse-block" id="blk-sources">',
-    '      <button class="collapse-hd" onclick="toggleBlock(\'blk-sources\')">',
-    '        <span>📡 新闻来源</span><span class="collapse-arrow">▾</span>',
-    '      </button>',
+    `      <button class="collapse-hd" onclick="toggleBlock('blk-sources')">`,
+    '        <span>\u{1F4E1} \u65B0\u95FB\u6765\u6E90</span><span class="collapse-arrow">\u25BE</span>',
+    "      </button>",
     '      <div class="collapse-bd">',
     '        <div id="src-grid"></div>',
-    '      </div>',
-    '    </div>',
-
+    "      </div>",
+    "    </div>",
     // ── 折叠块 2：推送设置 ──
     '    <div class="collapse-block" id="blk-settings">',
-    '      <button class="collapse-hd" onclick="toggleBlock(\'blk-settings\')">',
-    '        <span>⚙️ 推送设置</span><span class="collapse-arrow">▾</span>',
-    '      </button>',
+    `      <button class="collapse-hd" onclick="toggleBlock('blk-settings')">`,
+    '        <span>\u2699\uFE0F \u63A8\u9001\u8BBE\u7F6E</span><span class="collapse-arrow">\u25BE</span>',
+    "      </button>",
     '      <div class="collapse-bd">',
-
     '        <div class="form-group">',
-    '          <label class="form-label">推送分类 <small style="color:#94a3b8;font-weight:400">可多选</small></label>',
-    '          <div class="pcat-wrap">' + pushChips + '</div>',
-    '        </div>',
-
+    '          <label class="form-label">\u63A8\u9001\u5206\u7C7B <small style="color:#94a3b8;font-weight:400">\u53EF\u591A\u9009</small></label>',
+    '          <div class="pcat-wrap">' + pushChips + "</div>",
+    "        </div>",
     '        <div class="form-group">',
     '          <input class="form-control" type="number" id="max-input" value="' + config.maxItems + '" min="1" max="50">',
-    '        </div>',
-
+    "        </div>",
     '        <div class="form-group">',
-    '          <label class="form-label">包含关键词 <small style="color:#94a3b8;font-weight:400">逗号分隔</small></label>',
-    '          <input class="form-control" type="text" id="kw-input" value="' + config.keywords + '" placeholder="逗号分隔">',
-    '        </div>',
-
+    '          <label class="form-label">\u5305\u542B\u5173\u952E\u8BCD <small style="color:#94a3b8;font-weight:400">\u9017\u53F7\u5206\u9694</small></label>',
+    '          <input class="form-control" type="text" id="kw-input" value="' + config.keywords + '" placeholder="\u9017\u53F7\u5206\u9694">',
+    "        </div>",
     '        <div class="form-group">',
-    '          <label class="form-label">排除关键词 <small style="color:#94a3b8;font-weight:400">逗号分隔</small></label>',
-    '          <input class="form-control" type="text" id="exkw-input" value="' + config.excludeKeywords + '" placeholder="逗号分隔">',
-    '        </div>',
-
+    '          <label class="form-label">\u6392\u9664\u5173\u952E\u8BCD <small style="color:#94a3b8;font-weight:400">\u9017\u53F7\u5206\u9694</small></label>',
+    '          <input class="form-control" type="text" id="exkw-input" value="' + config.excludeKeywords + '" placeholder="\u9017\u53F7\u5206\u9694">',
+    "        </div>",
     '        <div class="form-group">',
-    '          <label class="form-label">推送时间（北京时间，逗号分隔）</label>',
-    '          <input class="form-control" type="text" id="hour-input" placeholder="例如: 8,12,16,20" value="' + (config.pushHours || config.pushHour || '8,12,16,20') + '">',
-    '        </div>',
-
+    '          <label class="form-label">\u63A8\u9001\u65F6\u95F4\uFF08\u5317\u4EAC\u65F6\u95F4\uFF0C\u9017\u53F7\u5206\u9694\uFF09</label>',
+    '          <input class="form-control" type="text" id="hour-input" placeholder="\u4F8B\u5982: 8,12,16,20" value="' + (config.pushHours || config.pushHour || "8,12,16,20") + '">',
+    "        </div>",
     '        <div class="toggle-row">',
-    '          <span class="toggle-label">定时推送</span>',
-    '          <label class="toggle"><input type="checkbox" id="enabled-toggle"' + (config.enabled ? ' checked' : '') + '><span class="toggle-slider"></span></label>',
-    '        </div>',
+    '          <span class="toggle-label">\u5B9A\u65F6\u63A8\u9001</span>',
+    '          <label class="toggle"><input type="checkbox" id="enabled-toggle"' + (config.enabled ? " checked" : "") + '><span class="toggle-slider"></span></label>',
+    "        </div>",
     '        <div class="toggle-row">',
-    '          <span class="toggle-label">AI 摘要</span>',
-    '          <label class="toggle"><input type="checkbox" id="ai-toggle"' + (config.aiSummary !== false ? ' checked' : '') + '><span class="toggle-slider"></span></label>',
-    '        </div>',
-
+    '          <span class="toggle-label">AI \u6458\u8981</span>',
+    '          <label class="toggle"><input type="checkbox" id="ai-toggle"' + (config.aiSummary !== false ? " checked" : "") + '><span class="toggle-slider"></span></label>',
+    "        </div>",
     // ── 天气推送设置 ──
     '        <div class="weather-section">',
-    '          <div class="weather-section-title">🌤 早安天气推送 <span class="weather-time-badge">每天 7:30</span></div>',
+    '          <div class="weather-section-title">\u{1F324} \u65E9\u5B89\u5929\u6C14\u63A8\u9001 <span class="weather-time-badge">\u6BCF\u5929 7:30</span></div>',
     '          <div class="form-group" style="margin-bottom:6px">',
-    '            <label class="form-label">城市名称 <small style="color:#94a3b8;font-weight:400">中文或英文均可</small></label>',
+    '            <label class="form-label">\u57CE\u5E02\u540D\u79F0 <small style="color:#94a3b8;font-weight:400">\u4E2D\u6587\u6216\u82F1\u6587\u5747\u53EF</small></label>',
     '            <div style="display:flex;gap:6px;align-items:center">',
-    '              <input class="form-control" type="text" id="weather-city-input" value="' + (config.weatherCity || '') + '" placeholder="如：北京 / Shanghai / Hong Kong" style="flex:1">',
-    '            </div>',
+    '              <input class="form-control" type="text" id="weather-city-input" value="' + (config.weatherCity || "") + '" placeholder="\u5982\uFF1A\u5317\u4EAC / Shanghai / Hong Kong" style="flex:1">',
+    "            </div>",
     '            <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;padding:0 2px">',
-    '              支持全球城市 · 数据来自 wttr.in · 无需 API Key',
-    '            </div>',
-    '          </div>',
+    "              \u652F\u6301\u5168\u7403\u57CE\u5E02 \xB7 \u6570\u636E\u6765\u81EA wttr.in \xB7 \u65E0\u9700 API Key",
+    "            </div>",
+    "          </div>",
     '          <div class="toggle-row" style="padding:4px 2px">',
-    '            <span class="toggle-label">启用天气推送</span>',
-    '            <label class="toggle"><input type="checkbox" id="weather-enabled-toggle"' + (config.weatherEnabled !== false ? ' checked' : '') + '><span class="toggle-slider"></span></label>',
-    '          </div>',
-    '          <button class="weather-test-btn" onclick="testWeather()">⛅ 测试天气推送</button>',
-    '        </div>',
-
-    '      </div>',
-    '    </div>',
-
+    '            <span class="toggle-label">\u542F\u7528\u5929\u6C14\u63A8\u9001</span>',
+    '            <label class="toggle"><input type="checkbox" id="weather-enabled-toggle"' + (config.weatherEnabled !== false ? " checked" : "") + '><span class="toggle-slider"></span></label>',
+    "          </div>",
+    '          <button class="weather-test-btn" onclick="testWeather()">\u26C5 \u6D4B\u8BD5\u5929\u6C14\u63A8\u9001</button>',
+    "        </div>",
+    "      </div>",
+    "    </div>",
     // ── 折叠块 3：推送渠道 ──
     '    <div class="collapse-block" id="blk-channels">',
-    '      <button class="collapse-hd" onclick="toggleBlock(\'blk-channels\')">',
-    '        <span>📬 推送渠道</span><span class="collapse-arrow">▾</span>',
-    '      </button>',
+    `      <button class="collapse-hd" onclick="toggleBlock('blk-channels')">`,
+    '        <span>\u{1F4EC} \u63A8\u9001\u6E20\u9053</span><span class="collapse-arrow">\u25BE</span>',
+    "      </button>",
     '      <div class="collapse-bd">',
     '        <div class="push-channels">',
     channelItems,
-    '        </div>',
-    '        <p class="push-hint">在 Cloudflare Worker → Settings → Variables 中添加变量后刷新页面即可生效。</p>',
-    '      </div>',
-    '    </div>',
-
-    '    <button class="save-btn" onclick="saveConfig()">💾 保存配置</button>',
-    '  </div>',
-    '</div>',
-
+    "        </div>",
+    '        <p class="push-hint">\u5728 Cloudflare Worker \u2192 Settings \u2192 Variables \u4E2D\u6DFB\u52A0\u53D8\u91CF\u540E\u5237\u65B0\u9875\u9762\u5373\u53EF\u751F\u6548\u3002</p>',
+    "      </div>",
+    "    </div>",
+    '    <button class="save-btn" onclick="saveConfig()">\u{1F4BE} \u4FDD\u5B58\u914D\u7F6E</button>',
+    "  </div>",
+    "</div>",
     // Main
     '<div class="main" id="main">',
-    '  <div id="news-area"><div class="loading"><div class="spinner"></div><p>正在加载新闻...</p></div></div>',
-    '</div>',
-
-    '</div>',
-
+    '  <div id="news-area"><div class="loading"><div class="spinner"></div><p>\u6B63\u5728\u52A0\u8F7D\u65B0\u95FB...</p></div></div>',
+    "</div>",
+    "</div>",
     '<div class="toast" id="toast"></div>',
-    '<script>' + buildScript() + '</script>',
-    '</body>',
-    '</html>',
-  ].join('\n');
+    "<script>" + buildScript() + "<\/script>",
+    "</body>",
+    "</html>"
+  ].join("\n");
 }
+__name(renderHTML, "renderHTML");
+export {
+  cloudflare_news_hub_default as default
+};
+//# sourceMappingURL=index.js.map
