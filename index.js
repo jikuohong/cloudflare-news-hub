@@ -17,8 +17,10 @@ var DEFAULT_CONFIG = {
   // 天气推送
   weatherCity: "",
   // 天气推送城市（空则不推送），支持中英文城市名
-  weatherEnabled: true
+  weatherEnabled: true,
   // 天气推送开关
+  weatherHours: "7"
+  // 天气推送时间（北京时间，逗号分隔，同新闻推送格式）
 };
 var CATEGORIES = {
   // ── 综合 ──
@@ -952,15 +954,6 @@ async function runWeatherPush(env, config, { isRetry = false } = {}) {
     }
     if (failedChannels.length === 0)
       return { skipped: true, reason: "\u65E0\u5F85\u91CD\u8BD5\u7684\u5929\u6C14\u6E20\u9053" };
-  } else {
-    const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-    const runKey = "weather_lastRun_" + today;
-    try {
-      const lastRun = await env.NEWS_CONFIG.get(runKey);
-      if (lastRun)
-        return { skipped: true, reason: "\u4ECA\u65E5\u5929\u6C14\u5DF2\u63A8\u9001" };
-    } catch {
-    }
   }
   const data = await fetchWeather(city);
   if (!data)
@@ -1129,13 +1122,7 @@ async function runWeatherPush(env, config, { isRetry = false } = {}) {
     }
   }
   const anySuccess = results.some((r) => r.status === "fulfilled" && r.value?.ok);
-  if (!isRetry && anySuccess) {
-    const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-    try {
-      await env.NEWS_CONFIG.put("weather_lastRun_" + today, "1", { expirationTtl: 86400 });
-    } catch {
-    }
-  }
+
   return { ok: anySuccess, summary, failedChannels: newFailedChannels };
 }
 __name(runWeatherPush, "runWeatherPush");
@@ -1209,8 +1196,14 @@ async function runNewsPush(env) {
     }
   } catch {
   }
-  if (hour === 7 && minute >= 25 && minute <= 35) {
-    await runWeatherPush(env, config);
+  const weatherHours = String(config.weatherHours || "7").split(/[,，\s]+/).map((h) => parseInt(h.trim())).filter((h) => !isNaN(h));
+  if (weatherHours.includes(hour)) {
+    const weatherRunKey = "weather_lastRun_" + today + "_" + hour;
+    const weatherLastRun = await env.NEWS_CONFIG.get(weatherRunKey).catch(() => null);
+    if (!weatherLastRun) {
+      await runWeatherPush(env, config);
+      await env.NEWS_CONFIG.put(weatherRunKey, "1", { expirationTtl: 86400 }).catch(() => {});
+    }
   }
   if (!config.enabled)
     return;
@@ -1344,6 +1337,7 @@ function applyConfigToUI() {
   document.getElementById('enabled-toggle').checked = config.enabled !== false;
   document.getElementById('ai-toggle').checked = config.aiSummary !== false;
   document.getElementById('weather-city-input').value = config.weatherCity || '';
+  document.getElementById('weather-hours-input').value = config.weatherHours || '7';
   document.getElementById('weather-enabled-toggle').checked = config.weatherEnabled !== false;
   currentCategory = config.category || 'general';
   renderSourceGrid(config.sources || []);
@@ -1409,6 +1403,7 @@ async function saveConfig() {
     enabled: document.getElementById('enabled-toggle').checked,
     aiSummary: document.getElementById('ai-toggle').checked,
     weatherCity: document.getElementById('weather-city-input').value.trim(),
+    weatherHours: document.getElementById('weather-hours-input').value.trim() || '7',
     weatherEnabled: document.getElementById('weather-enabled-toggle').checked,
     sources: sources,
   };
@@ -2146,7 +2141,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
     "        </div>",
     // ── 天气推送设置 ──
     '        <div class="weather-section">',
-    '          <div class="weather-section-title">\u{1F324} \u65E9\u5B89\u5929\u6C14\u63A8\u9001 <span class="weather-time-badge">\u6BCF\u5929 7:30</span></div>',
+    '          <div class="weather-section-title">\u2601\uFE0F \u5929\u6C14\u63A8\u9001</div>',
+    '          <div class="form-group" style="margin-bottom:6px">',
+    '            <label class="form-label">\u63A8\u9001\u65F6\u95F4\uFF08\u5317\u4EAC\u65F6\u95F4\uFF0C\u9017\u53F7\u5206\u9694\uFF09</label>',
+    '            <input class="form-control" type="text" id="weather-hours-input" placeholder="\u4F8B\u5982: 7,8" value="7">',
+    '          </div>',
     '          <div class="form-group" style="margin-bottom:6px">',
     '            <label class="form-label">\u57CE\u5E02\u540D\u79F0 <small style="color:#94a3b8;font-weight:400">\u4E2D\u6587\u6216\u82F1\u6587\u5747\u53EF</small></label>',
     '            <div style="display:flex;gap:6px;align-items:center">',
