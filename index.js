@@ -12,6 +12,9 @@ const DEFAULT_CONFIG = {
   enabled: true,
   aiSummary: true,
   sources: ['rfa', 'voachinese', 'bbc_chinese', 'bbc_trad', 'hk01', 'mingpao', 'orientaldaily', 'singtao', 'hkej', 'appledaily_tw', 'udn', 'cna', 'rti', 'storm', 'thenewslens', 'ettoday', 'setn', 'initium', 'dwnews', 'chosun', 'zaobao', 'duowei', 'googlezh'],
+  // 天气推送
+  weatherCity: '',                 // 天气推送城市（空则不推送），支持中英文城市名
+  weatherEnabled: true,            // 天气推送开关
 };
 
 const CATEGORIES = {
@@ -115,6 +118,7 @@ export default {
     if (url.pathname === '/api/config' && request.method === 'POST') return handleSaveConfig(request, env);
     if (url.pathname === '/api/config' && request.method === 'GET')  return handleGetConfig(env);
     if (url.pathname === '/api/test'   && request.method === 'POST') return handleTestPush(env);
+    if (url.pathname === '/api/weather-test' && request.method === 'POST') return handleTestWeather(env);
     if (url.pathname === '/api/news'   && request.method === 'GET')  return handleNews(request, env);
     return new Response(renderHTML(await getConfig(env), env), { headers: { 'Content-Type': 'text/html;charset=UTF-8' } });
   },
@@ -755,7 +759,326 @@ async function pushGotify(env, config, payload) {
   return { channel: 'Gotify', ok: true };
 }
 
-// ── 统一推送入口（优化①⑥）──────────────────────────────────
+// ============================================================
+// 天气获取与推送（每天早上 7:30 北京时间）
+// 使用 wttr.in 免费天气接口，无需 API Key
+// 支持中英文城市名，如 "北京"、"Shanghai"、"Hong Kong"
+// ============================================================
+
+const WEATHER_ICONS = {
+  '晴': '☀️', '晴天': '☀️', '阳光': '☀️', 'Sunny': '☀️', 'Clear': '☀️',
+  '多云': '⛅', '局部多云': '⛅', 'Partly': '⛅', 'Cloudy': '☁️', '阴': '☁️',
+  '雨': '🌧️', '小雨': '🌦️', '中雨': '🌧️', '大雨': '⛈️', '暴雨': '⛈️',
+  '雷': '⛈️', '雷雨': '⛈️', 'Thunder': '⛈️', 'Rain': '🌧️', 'Drizzle': '🌦️',
+  '雪': '❄️', '小雪': '🌨️', '大雪': '❄️', 'Snow': '❄️',
+  '雾': '🌫️', 'Fog': '🌫️', '霾': '😷', '沙尘': '🌪️',
+};
+
+function getWeatherIcon(desc) {
+  if (!desc) return '🌤️';
+  for (const [kw, icon] of Object.entries(WEATHER_ICONS)) {
+    if (desc.includes(kw)) return icon;
+  }
+  return '🌤️';
+}
+
+function getWindLabel(kmph) {
+  const v = parseInt(kmph) || 0;
+  if (v < 1) return '静风';
+  if (v < 6) return '软风';
+  if (v < 12) return '轻风';
+  if (v < 20) return '微风';
+  if (v < 29) return '和风';
+  if (v < 39) return '清风';
+  if (v < 50) return '强风';
+  if (v < 62) return '劲风';
+  if (v < 75) return '大风';
+  return '烈风';
+}
+
+function getUVLabel(uv) {
+  const v = parseInt(uv) || 0;
+  if (v <= 2) return v + ' 低';
+  if (v <= 5) return v + ' 中等';
+  if (v <= 7) return v + ' 高';
+  if (v <= 10) return v + ' 很高';
+  return v + ' 极高';
+}
+
+const HOUR_LABELS = { '0': '00:00', '300': '03:00', '600': '06:00', '900': '09:00', '1200': '12:00', '1500': '15:00', '1800': '18:00', '2100': '21:00' };
+
+async function fetchWeather(city) {
+  if (!city) return null;
+  try {
+    const url = 'https://wttr.in/' + encodeURIComponent(city) + '?format=j1';
+    const resp = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; WeatherBot/1.0)', 'Accept-Language': 'zh-CN,zh;q=0.9' },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch { return null; }
+}
+
+function buildWeatherMessage(city, data) {
+  if (!data) return null;
+  const cur = data.current_condition?.[0];
+  if (!cur) return null;
+
+  // 优先取中文描述
+  const desc = cur.lang_zh?.[0]?.value || cur.weatherDesc?.[0]?.value || '未知';
+  const icon = getWeatherIcon(desc);
+  const tempC    = cur.temp_C;
+  const feelsLike = cur.FeelsLikeC;
+  const humidity  = cur.humidity;
+  const windKmph  = cur.windspeedKmph;
+  const windDir   = cur.winddir16Point;
+  const uvIndex   = cur.uvIndex;
+  const visibility = cur.visibility;
+
+  const today    = data.weather?.[0];
+  const tomorrow = data.weather?.[1];
+  const dayAfter = data.weather?.[2];
+
+  const todayMax = today?.maxtempC;
+  const todayMin = today?.mintempC;
+
+  const now = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+
+  // ── 纯文本版 ──
+  let plain = '🌤 早安天气播报\n';
+  plain += '📍 ' + city + '  |  ' + now + '\n';
+  plain += '\n━━━ ' + icon + ' 当前天气 ━━━\n';
+  plain += '天气：' + desc + '\n';
+  plain += '气温：' + tempC + '°C（体感 ' + feelsLike + '°C）\n';
+  plain += '今日：' + todayMin + '°C ~ ' + todayMax + '°C\n';
+  plain += '湿度：' + humidity + '%  |  风速：' + windKmph + ' km/h ' + getWindLabel(windKmph) + '\n';
+  plain += '能见度：' + visibility + ' km  |  紫外线：' + getUVLabel(uvIndex) + '\n';
+
+  // 今日逐时
+  if (today?.hourly?.length) {
+    plain += '\n━━━ ⏰ 今日时段 ━━━\n';
+    today.hourly.forEach(h => {
+      const t = HOUR_LABELS[h.time] || h.time;
+      const hDesc = h.lang_zh?.[0]?.value || h.weatherDesc?.[0]?.value || '';
+      const hIcon = getWeatherIcon(hDesc);
+      plain += t + '  ' + h.tempC + '°C  ' + hIcon + ' ' + hDesc;
+      if (parseInt(h.chanceofrain) > 20) plain += '  ☔' + h.chanceofrain + '%';
+      plain += '\n';
+    });
+  }
+
+  // 未来两天
+  if (tomorrow) {
+    const tDesc = tomorrow.hourly?.[4]?.lang_zh?.[0]?.value || tomorrow.hourly?.[4]?.weatherDesc?.[0]?.value || '';
+    const tIcon = getWeatherIcon(tDesc);
+    plain += '\n━━━ 📅 明日预报 ━━━\n';
+    plain += tIcon + ' ' + tDesc + '  ' + tomorrow.mintempC + '°C ~ ' + tomorrow.maxtempC + '°C\n';
+  }
+  if (dayAfter) {
+    const dDesc = dayAfter.hourly?.[4]?.lang_zh?.[0]?.value || dayAfter.hourly?.[4]?.weatherDesc?.[0]?.value || '';
+    const dIcon = getWeatherIcon(dDesc);
+    // 后天日期
+    const da = new Date();
+    da.setDate(da.getDate() + 2);
+    const daLabel = (da.getMonth() + 1) + '月' + da.getDate() + '日';
+    plain += dIcon + ' 后天（' + daLabel + '）' + dDesc + '  ' + dayAfter.mintempC + '°C ~ ' + dayAfter.maxtempC + '°C\n';
+  }
+
+  // ── Markdown 版 ──
+  let md = '## ' + icon + ' 早安天气播报\n\n';
+  md += '**📍 ' + city + '**  |  ' + now + '\n\n';
+  md += '### 🌡 当前天气\n';
+  md += '- 天气：**' + desc + '**\n';
+  md += '- 气温：**' + tempC + '°C**（体感 ' + feelsLike + '°C）\n';
+  md += '- 今日：' + todayMin + '°C ~ ' + todayMax + '°C\n';
+  md += '- 湿度：' + humidity + '%  |  风速：' + windKmph + ' km/h（' + getWindLabel(windKmph) + '）\n';
+  md += '- 能见度：' + visibility + ' km  |  紫外线：' + getUVLabel(uvIndex) + '\n\n';
+  if (today?.hourly?.length) {
+    md += '### ⏰ 今日时段\n';
+    today.hourly.forEach(h => {
+      const t = HOUR_LABELS[h.time] || h.time;
+      const hDesc = h.lang_zh?.[0]?.value || h.weatherDesc?.[0]?.value || '';
+      const hIcon = getWeatherIcon(hDesc);
+      md += '- **' + t + '** ' + h.tempC + '°C  ' + hIcon + ' ' + hDesc;
+      if (parseInt(h.chanceofrain) > 20) md += '  ☔' + h.chanceofrain + '%';
+      md += '\n';
+    });
+    md += '\n';
+  }
+  if (tomorrow || dayAfter) {
+    md += '### 📅 未来预报\n';
+    if (tomorrow) {
+      const tDesc = tomorrow.hourly?.[4]?.lang_zh?.[0]?.value || tomorrow.hourly?.[4]?.weatherDesc?.[0]?.value || '';
+      md += '- 明日：' + getWeatherIcon(tDesc) + ' ' + tDesc + '  ' + tomorrow.mintempC + '°C ~ ' + tomorrow.maxtempC + '°C\n';
+    }
+    if (dayAfter) {
+      const dDesc = dayAfter.hourly?.[4]?.lang_zh?.[0]?.value || dayAfter.hourly?.[4]?.weatherDesc?.[0]?.value || '';
+      const da = new Date(); da.setDate(da.getDate() + 2);
+      md += '- 后天（' + (da.getMonth()+1) + '/' + da.getDate() + '）：' + getWeatherIcon(dDesc) + ' ' + dDesc + '  ' + dayAfter.mintempC + '°C ~ ' + dayAfter.maxtempC + '°C\n';
+    }
+  }
+
+  // Telegram HTML 版
+  let tg = '🌤 <b>早安天气播报</b>\n';
+  tg += '📍 <b>' + escapeTg(city) + '</b>  |  ' + escapeTg(now) + '\n\n';
+  tg += '━━━ ' + icon + ' <b>当前天气</b> ━━━\n';
+  tg += '天气：<b>' + escapeTg(desc) + '</b>\n';
+  tg += '气温：<b>' + tempC + '°C</b>（体感 ' + feelsLike + '°C）\n';
+  tg += '今日：' + todayMin + '°C ~ ' + todayMax + '°C\n';
+  tg += '湿度：' + humidity + '%  |  风速：' + windKmph + ' km/h ' + getWindLabel(windKmph) + '\n';
+  tg += '能见度：' + visibility + ' km  |  紫外线：' + getUVLabel(uvIndex) + '\n';
+  if (today?.hourly?.length) {
+    tg += '\n━━━ ⏰ <b>今日时段</b> ━━━\n';
+    today.hourly.forEach(h => {
+      const t = HOUR_LABELS[h.time] || h.time;
+      const hDesc = h.lang_zh?.[0]?.value || h.weatherDesc?.[0]?.value || '';
+      tg += t + '  ' + h.tempC + '°C  ' + getWeatherIcon(hDesc) + ' ' + escapeTg(hDesc);
+      if (parseInt(h.chanceofrain) > 20) tg += '  ☔' + h.chanceofrain + '%';
+      tg += '\n';
+    });
+  }
+  if (tomorrow) {
+    const tDesc = tomorrow.hourly?.[4]?.lang_zh?.[0]?.value || tomorrow.hourly?.[4]?.weatherDesc?.[0]?.value || '';
+    tg += '\n━━━ 📅 <b>明日预报</b> ━━━\n';
+    tg += getWeatherIcon(tDesc) + ' ' + escapeTg(tDesc) + '  ' + tomorrow.mintempC + '°C ~ ' + tomorrow.maxtempC + '°C\n';
+  }
+  if (dayAfter) {
+    const dDesc = dayAfter.hourly?.[4]?.lang_zh?.[0]?.value || dayAfter.hourly?.[4]?.weatherDesc?.[0]?.value || '';
+    const da = new Date(); da.setDate(da.getDate() + 2);
+    tg += getWeatherIcon(dDesc) + ' 后天（' + (da.getMonth()+1) + '/' + da.getDate() + '）' + escapeTg(dDesc) + '  ' + dayAfter.mintempC + '°C ~ ' + dayAfter.maxtempC + '°C\n';
+  }
+
+  return { plain, md, tg };
+}
+
+async function runWeatherPush(env, config) {
+  const city = config.weatherCity?.trim();
+  if (!city || config.weatherEnabled === false) return { skipped: true, reason: '天气推送未启用或未设置城市' };
+
+  // 防重推：每天只推一次
+  const today = new Date().toISOString().slice(0, 10);
+  const runKey = 'weather_lastRun_' + today;
+  try {
+    const lastRun = await env.NEWS_CONFIG.get(runKey);
+    if (lastRun) return { skipped: true, reason: '今日天气已推送' };
+  } catch {}
+
+  const data = await fetchWeather(city);
+  if (!data) return { ok: false, error: '天气数据获取失败，请检查城市名称' };
+
+  const msgs = buildWeatherMessage(city, data);
+  if (!msgs) return { ok: false, error: '天气数据解析失败' };
+
+  const results = await Promise.allSettled([
+    // Telegram
+    (async () => {
+      if (!env.TG_TOKEN || !env.TG_CHAT_ID) return { channel: 'Telegram', skipped: true };
+      await sendToTelegramSafe(env, msgs.tg);
+      return { channel: 'Telegram', ok: true };
+    })(),
+    // 飞书
+    (async () => {
+      const webhook = env.FEISHU_WEBHOOK;
+      if (!webhook) return { channel: '飞书', skipped: true };
+      const body = { msg_type: 'interactive', card: { header: { title: { tag: 'plain_text', content: '🌤 早安天气播报 - ' + city }, template: 'turquoise' }, elements: [{ tag: 'markdown', content: msgs.md }] } };
+      const resp = await fetch(webhook, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const d = await resp.json();
+      if (d.code !== 0) throw new Error('飞书天气推送失败: ' + d.msg);
+      return { channel: '飞书', ok: true };
+    })(),
+    // 钉钉
+    (async () => {
+      const webhook = env.DINGTALK_WEBHOOK;
+      if (!webhook) return { channel: '钉钉', skipped: true };
+      let url = webhook;
+      if (env.DINGTALK_SECRET) {
+        const timestamp = Date.now();
+        const strToSign = timestamp + '\n' + env.DINGTALK_SECRET;
+        const enc = new TextEncoder();
+        const key = await crypto.subtle.importKey('raw', enc.encode(env.DINGTALK_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+        const sig = await crypto.subtle.sign('HMAC', key, enc.encode(strToSign));
+        const b64 = btoa(String.fromCharCode(...new Uint8Array(sig)));
+        url += (url.includes('?') ? '&' : '?') + 'timestamp=' + timestamp + '&sign=' + encodeURIComponent(b64);
+      }
+      const body = { msgtype: 'markdown', markdown: { title: '🌤 早安天气 - ' + city, text: msgs.md } };
+      const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const d = await resp.json();
+      if (d.errcode !== 0) throw new Error('钉钉天气推送失败: ' + d.errmsg);
+      return { channel: '钉钉', ok: true };
+    })(),
+    // 企业微信
+    (async () => {
+      const webhook = env.WECOM_WEBHOOK;
+      if (!webhook) return { channel: '企业微信', skipped: true };
+      const body = { msgtype: 'markdown', markdown: { content: msgs.md } };
+      const resp = await fetch(webhook, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const d = await resp.json();
+      if (d.errcode !== 0) throw new Error('企业微信天气推送失败: ' + d.errmsg);
+      return { channel: '企业微信', ok: true };
+    })(),
+    // PushPlus
+    (async () => {
+      const token = env.PUSHPLUS_TOKEN;
+      if (!token) return { channel: 'PushPlus', skipped: true };
+      const body = { token, title: '🌤 早安天气 - ' + city, content: msgs.md, template: 'markdown' };
+      const resp = await fetch('https://www.pushplus.plus/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const d = await resp.json();
+      if (d.code !== 200) throw new Error('PushPlus天气推送失败: ' + d.msg);
+      return { channel: 'PushPlus', ok: true };
+    })(),
+    // Bark
+    (async () => {
+      const barkUrl = env.BARK_URL;
+      if (!barkUrl) return { channel: 'Bark', skipped: true };
+      const resp = await fetch(barkUrl.replace(/\/$/, ''), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: '🌤 早安天气 - ' + city, body: msgs.plain.slice(0, 1000), group: '天气', icon: 'https://www.google.com/favicon.ico' }) });
+      const d = await resp.json();
+      if (d.code !== 200) throw new Error('Bark天气推送失败: ' + d.message);
+      return { channel: 'Bark', ok: true };
+    })(),
+    // WxPusher
+    (async () => {
+      const appToken = env.WXPUSHER_APP_TOKEN;
+      if (!appToken) return { channel: 'WxPusher', skipped: true };
+      const uids = (env.WXPUSHER_UIDS || '').split(/[,，\s]+/).map(s => s.trim()).filter(Boolean);
+      const topicIds = (env.WXPUSHER_TOPIC_IDS || '').split(/[,，\s]+/).map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+      if (uids.length === 0 && topicIds.length === 0) throw new Error('WxPusher：请配置 WXPUSHER_UIDS 或 WXPUSHER_TOPIC_IDS');
+      const body = { appToken, content: msgs.md, summary: '🌤 早安天气 - ' + city, contentType: 3, uids: uids.length > 0 ? uids : undefined, topicIds: topicIds.length > 0 ? topicIds : undefined, verifyPayType: 0 };
+      const resp = await fetch('https://wxpusher.zjiecode.com/api/send/message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const d = await resp.json();
+      if (d.code !== 1000) throw new Error('WxPusher天气推送失败: ' + d.msg);
+      return { channel: 'WxPusher', ok: true };
+    })(),
+    // ntfy
+    (async () => {
+      const ntfyUrl = env.NTFY_URL;
+      if (!ntfyUrl) return { channel: 'ntfy', skipped: true };
+      const headers = { 'Title': '🌤 早安天气 - ' + city, 'Priority': 'default', 'Tags': 'sunny', 'Content-Type': 'text/plain; charset=utf-8' };
+      if (env.NTFY_TOKEN) headers['Authorization'] = 'Bearer ' + env.NTFY_TOKEN;
+      const resp = await fetch(ntfyUrl, { method: 'POST', headers, body: msgs.plain.slice(0, 4000) });
+      if (!resp.ok) throw new Error('ntfy天气推送失败: HTTP ' + resp.status);
+      return { channel: 'ntfy', ok: true };
+    })(),
+    // Gotify
+    (async () => {
+      const gotifyUrl = env.GOTIFY_URL;
+      const gotifyToken = env.GOTIFY_TOKEN;
+      if (!gotifyUrl || !gotifyToken) return { channel: 'Gotify', skipped: true };
+      const resp = await fetch(gotifyUrl.replace(/\/$/, '') + '/message?token=' + encodeURIComponent(gotifyToken), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: '🌤 早安天气 - ' + city, message: msgs.md, priority: 5, extras: { 'client::display': { contentType: 'text/markdown' } } }) });
+      if (!resp.ok) throw new Error('Gotify天气推送失败: HTTP ' + resp.status);
+      return { channel: 'Gotify', ok: true };
+    })(),
+  ]);
+
+  const anySuccess = results.some(r => r.status === 'fulfilled' && r.value?.ok);
+  if (anySuccess) {
+    try { await env.NEWS_CONFIG.put(runKey, '1', { expirationTtl: 86400 }); } catch {}
+  }
+  const summary = results.map(r => r.status === 'fulfilled' ? (r.value.skipped ? r.value.channel + ':未配置' : r.value.channel + ':✅') : '❌(' + (r.reason?.message || '未知') + ')');
+  return { ok: anySuccess, summary };
+}
+
+
 async function runAllPush(env, config, { isRetry = false } = {}) {
   // 优化⑥：重试模式，先读取失败渠道，若无则提前返回，避免无谓构建 payload
   let failedChannels = [];
@@ -820,9 +1143,23 @@ async function runAllPush(env, config, { isRetry = false } = {}) {
 
 async function runNewsPush(env) {
   const config = await getConfig(env);
-  if (!config.enabled) return;
+
+  // 获取北京时间的小时和分钟
   const now = new Date();
-  const hour = parseInt(now.toLocaleString('en-US', { timeZone: 'Asia/Shanghai', hour: 'numeric', hour12: false }));
+  const bjTimeStr = now.toLocaleString('en-US', { timeZone: 'Asia/Shanghai', hour: 'numeric', minute: 'numeric', hour12: false });
+  // en-US hour12:false 格式如 "7:30" 或 "23:05"
+  const [hourStr, minuteStr] = bjTimeStr.split(':');
+  const hour   = parseInt(hourStr);
+  const minute = parseInt(minuteStr);
+
+  // ── 天气推送：每天 7:30 北京时间 ──────────────────────────
+  if (hour === 7 && minute >= 28 && minute <= 35) {
+    // 允许 ±3 分钟窗口，防止 cron 偏移漏推
+    await runWeatherPush(env, config);
+  }
+
+  if (!config.enabled) return;
+
   const pushHours = String(config.pushHours || config.pushHour || '8')
     .split(/[,，\s]+/).map(h => parseInt(h.trim())).filter(h => !isNaN(h));
 
@@ -850,6 +1187,23 @@ async function handleTestPush(env) {
     const config = await getConfig(env);
     const { count, summary } = await runAllPush(env, config);
     return Response.json({ success: true, message: '推送完成！共 ' + count + ' 条\n' + summary.join(' | ') });
+  } catch (e) { return Response.json({ success: false, message: e.message }, { status: 500 }); }
+}
+
+async function handleTestWeather(env) {
+  try {
+    const config = await getConfig(env);
+    const city = config.weatherCity?.trim();
+    if (!city) return Response.json({ success: false, message: '请先在推送设置中填写城市名称并保存' });
+    const data = await fetchWeather(city);
+    if (!data) return Response.json({ success: false, message: '天气数据获取失败，请检查城市名称（支持中文或英文，如"北京"/"Beijing"）' });
+    const msgs = buildWeatherMessage(city, data);
+    if (!msgs) return Response.json({ success: false, message: '天气数据解析失败' });
+    // 测试模式：清除今日防重推记录，确保能推送
+    try { await env.NEWS_CONFIG.delete('weather_lastRun_' + new Date().toISOString().slice(0, 10)); } catch {}
+    const result = await runWeatherPush(env, config);
+    if (result.skipped) return Response.json({ success: false, message: result.reason });
+    return Response.json({ success: result.ok, message: '天气推送完成！\n' + (result.summary || []).join(' | '), preview: msgs.plain });
   } catch (e) { return Response.json({ success: false, message: e.message }, { status: 500 }); }
 }
 
@@ -926,6 +1280,8 @@ function applyConfigToUI() {
   document.getElementById('hour-input').value = config.pushHours || config.pushHour || '8,12,16,20';
   document.getElementById('enabled-toggle').checked = config.enabled !== false;
   document.getElementById('ai-toggle').checked = config.aiSummary !== false;
+  document.getElementById('weather-city-input').value = config.weatherCity || '';
+  document.getElementById('weather-enabled-toggle').checked = config.weatherEnabled !== false;
   currentCategory = config.category || 'general';
   renderSourceGrid(config.sources || []);
   updateNavActive();
@@ -989,6 +1345,8 @@ async function saveConfig() {
     pushHours: document.getElementById('hour-input').value,
     enabled: document.getElementById('enabled-toggle').checked,
     aiSummary: document.getElementById('ai-toggle').checked,
+    weatherCity: document.getElementById('weather-city-input').value.trim(),
+    weatherEnabled: document.getElementById('weather-enabled-toggle').checked,
     sources: sources,
   };
   config = newConf;
@@ -1005,6 +1363,18 @@ async function testPush() {
   var d = await r.json();
   showToast(d.message, d.success ? 'success' : 'error');
 }
+
+async function testWeather() {
+  var city = document.getElementById('weather-city-input').value.trim();
+  if (!city) { showToast('请先填写城市名称', 'error'); return; }
+  showToast('正在获取天气并推送，请稍候...', 'info');
+  // 先保存当前配置（确保城市名已写入 KV）
+  await saveConfig();
+  var r = await fetch('/api/weather-test', {method:'POST'});
+  var d = await r.json();
+  showToast(d.message, d.success ? 'success' : 'error');
+}
+window.testWeather = testWeather;
 
 async function loadNews() {
   var area = document.getElementById('news-area');
@@ -1456,6 +1826,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
 .save-btn { width: 100%; padding: 9px; background: var(--accent); color: white; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 10px; transition: background .15s; }
 .save-btn:hover { background: #1d4ed8; }
 
+/* Weather settings section */
+.weather-section { margin-top: 10px; border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: linear-gradient(135deg, #0ea5e920 0%, #38bdf820 100%); border-color: #0ea5e940; }
+[data-theme="dark"] .weather-section { background: linear-gradient(135deg, #0c4a6e40 0%, #0e749040 100%); border-color: #0369a160; }
+.weather-section-title { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+.weather-time-badge { font-size: 10px; background: #0ea5e9; color: white; padding: 1px 7px; border-radius: 20px; font-weight: 600; letter-spacing: .03em; }
+.weather-test-btn { width: 100%; padding: 7px; background: #0ea5e9; color: white; border: none; border-radius: 7px; font-size: 12px; font-weight: 600; cursor: pointer; margin-top: 8px; transition: background .15s; }
+.weather-test-btn:hover { background: #0284c7; }
+
 /* Main content */
 .main { margin-left: var(--sidebar-w); flex: 1; padding: 24px; min-width: 0; }
 .news-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
@@ -1604,6 +1982,25 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
     '        <div class="toggle-row">',
     '          <span class="toggle-label">AI 摘要</span>',
     '          <label class="toggle"><input type="checkbox" id="ai-toggle"' + (config.aiSummary !== false ? ' checked' : '') + '><span class="toggle-slider"></span></label>',
+    '        </div>',
+
+    // ── 天气推送设置 ──
+    '        <div class="weather-section">',
+    '          <div class="weather-section-title">🌤 早安天气推送 <span class="weather-time-badge">每天 7:30</span></div>',
+    '          <div class="form-group" style="margin-bottom:6px">',
+    '            <label class="form-label">城市名称 <small style="color:#94a3b8;font-weight:400">中文或英文均可</small></label>',
+    '            <div style="display:flex;gap:6px;align-items:center">',
+    '              <input class="form-control" type="text" id="weather-city-input" value="' + (config.weatherCity || '') + '" placeholder="如：北京 / Shanghai / Hong Kong" style="flex:1">',
+    '            </div>',
+    '            <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;padding:0 2px">',
+    '              支持全球城市 · 数据来自 wttr.in · 无需 API Key',
+    '            </div>',
+    '          </div>',
+    '          <div class="toggle-row" style="padding:4px 2px">',
+    '            <span class="toggle-label">启用天气推送</span>',
+    '            <label class="toggle"><input type="checkbox" id="weather-enabled-toggle"' + (config.weatherEnabled !== false ? ' checked' : '') + '><span class="toggle-slider"></span></label>',
+    '          </div>',
+    '          <button class="weather-test-btn" onclick="testWeather()">⛅ 测试天气推送</button>',
     '        </div>',
 
     '      </div>',
