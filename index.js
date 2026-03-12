@@ -1559,11 +1559,8 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // \u2500\u2500 \u65F6\u949F \u2500\u2500
-// ===== 日期时间农历时钟 =====
-// 农历数据：寿星万年历算法，春节日期来源香港天文台，覆盖2000-2100
-
-// 每年正月初一对应公历日期（精确，来源：香港天文台/国家天文台）
-var CNY = {
+// 正月初一公历日期表（来源：香港天文台，2000-2100）
+var CNY_DATA = {
   2000:[2,5],2001:[1,24],2002:[2,12],2003:[2,1],2004:[1,22],
   2005:[2,9],2006:[1,29],2007:[2,18],2008:[2,7],2009:[1,26],
   2010:[2,14],2011:[2,3],2012:[1,23],2013:[2,10],2014:[1,31],
@@ -1586,10 +1583,8 @@ var CNY = {
   2095:[2,4],2096:[1,24],2097:[2,12],2098:[2,1],2099:[1,21],
   2100:[2,9]
 };
-
-// 每年各月天数编码（1=30天大月，0=29天小月），含闰月
-// 格式：[月1,月2,...,月12或13]  闰月用负数标记，如-4表示闰四月
-var LUNAR_MONTHS_DATA = {
+// 各月大小（1=30天大月，0=29天小月，负数=闰月，如-4表示闰四月）
+var LMD_DATA = {
   2000:[1,0,1,0,1,0,1,1,0,1,0,1],
   2001:[0,1,0,1,0,1,0,-4,1,1,0,1,0],
   2002:[1,0,1,0,1,0,1,0,1,1,0,1],
@@ -1702,11 +1697,11 @@ var ZD_N=['鼠','牛','虎','兔','龙','蛇','马','羊','猴','鸡','狗','猪
 
 function lunarDate(date) {
   var y=date.getFullYear(), m=date.getMonth()+1, d=date.getDate();
-  var lunarYear=y, cny=CNY[y];
+  var lunarYear=y, cny=CNY_DATA[y];
   if(!cny) return '';
-  if(m<cny[0]||(m===cny[0]&&d<cny[1])){ lunarYear=y-1; cny=CNY[lunarYear]; if(!cny) return ''; }
+  if(m<cny[0]||(m===cny[0]&&d<cny[1])){ lunarYear=y-1; cny=CNY_DATA[lunarYear]; if(!cny) return ''; }
   var diff=Math.round((new Date(y,m-1,d)-new Date(lunarYear,cny[0]-1,cny[1]))/86400000);
-  var arr=LMD[lunarYear]; if(!arr) return '';
+  var arr=LMD_DATA[lunarYear]; if(!arr) return '';
   var lm=1,ld=diff,isLeap=false,leapLbl=0;
   for(var i=0;i<arr.length;i++){
     var mv=arr[i], isLM=mv<0, days=(Math.abs(mv)===1)?30:29;
@@ -1735,7 +1730,11 @@ function updateClock() {
   if (timeEl) timeEl.textContent = h + ':' + m + ':' + s;
   if (dateEl) dateEl.textContent = y + '\u5E74' + mo + '\u6708' + d + '\u65E5';
   if (weekEl) weekEl.textContent = weeks[now.getDay()];
-  if (lunarEl) lunarEl.textContent = '\u519C\u5386 ' + lunarDate(now);
+  var lunar = lunarDate(now);
+  var sepEl = document.getElementById('clock-sep-lunar');
+  if (!lunar) console.warn('lunarDate empty, y='+now.getFullYear()+' m='+(now.getMonth()+1)+' d='+now.getDate());
+  if (lunarEl) lunarEl.textContent = lunar ? '农历 ' + lunar : '';
+  if (sepEl) sepEl.style.display = lunar ? '' : 'none';
 }
 updateClock();
 setInterval(updateClock, 1000);
@@ -2085,7 +2084,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
     '    <span class="clock-sep">|</span>',
     '    <span class="clock-date" id="clock-date"></span>',
     '    <span class="clock-week" id="clock-week"></span>',
-    '    <span class="clock-sep">|</span>',
+    '    <span class="clock-sep" id="clock-sep-lunar">|</span>',
     '    <span class="clock-lunar" id="clock-lunar"></span>',
     "  </div>",
     '  <div class="topbar-right">',
