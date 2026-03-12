@@ -10,4 +10,4 @@ binding = "NEWS_CONFIG"
 id = "26d72d9d4753437cb16a70b67bb71507"
 
 [triggers]
-crons = ["0 * * * *"]
+crons = ["0 */30 * * *"]
