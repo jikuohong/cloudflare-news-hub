@@ -372,6 +372,10 @@ async function handleNews(request, env) {
 //   WXPUSHER_APP_TOKEN  WxPusher appToken
 //   WXPUSHER_UIDS       接收用户 UID，逗号分隔
 //   WXPUSHER_TOPIC_IDS  主题 ID，逗号分隔（可选）
+//   NTFY_URL            ntfy 推送地址（含 topic），如 https://ntfy.sh/your_topic
+//   NTFY_TOKEN          ntfy 访问令牌（可选，服务端开启认证时填写）
+//   GOTIFY_URL          Gotify 服务地址，如 https://gotify.example.com
+//   GOTIFY_TOKEN        Gotify 应用 Token
 // ============================================================
 
 // ── 优化①：跨批次推送去重 ──────────────────────────────────
@@ -700,6 +704,57 @@ async function pushWxPusher(env, config, payload) {
   return { channel: 'WxPusher', ok: true };
 }
 
+// ── ntfy ─────────────────────────────────────────────────────
+// 环境变量：
+//   NTFY_URL      ntfy 推送地址，含 topic，如 https://ntfy.sh/your_topic
+//                 自托管示例：https://ntfy.example.com/your_topic
+//   NTFY_TOKEN    访问令牌（可选，服务端开启认证时填写）
+async function pushNtfy(env, config, payload) {
+  const ntfyUrl = env.NTFY_URL;
+  if (!ntfyUrl) return { channel: 'ntfy', skipped: true };
+  const { plain, catLabel } = payload;
+  const headers = {
+    'Title':    '📰 中文新闻 Hub - ' + catLabel,
+    'Priority': 'default',
+    'Tags':     'newspaper',
+    'Content-Type': 'text/plain; charset=utf-8',
+  };
+  if (env.NTFY_TOKEN) headers['Authorization'] = 'Bearer ' + env.NTFY_TOKEN;
+  const resp = await fetch(ntfyUrl, {
+    method: 'POST',
+    headers,
+    body: plain.slice(0, 4000),
+  });
+  if (!resp.ok) throw new Error('ntfy 推送失败: HTTP ' + resp.status);
+  return { channel: 'ntfy', ok: true };
+}
+
+// ── Gotify ────────────────────────────────────────────────────
+// 环境变量：
+//   GOTIFY_URL    Gotify 服务地址，如 https://gotify.example.com
+//   GOTIFY_TOKEN  应用 Token（在 Gotify 后台「Apps」中创建应用获得）
+async function pushGotify(env, config, payload) {
+  const gotifyUrl = env.GOTIFY_URL;
+  const gotifyToken = env.GOTIFY_TOKEN;
+  if (!gotifyUrl || !gotifyToken) return { channel: 'Gotify', skipped: true };
+  const { md, catLabel } = payload;
+  const base = gotifyUrl.replace(/\/$/, '');
+  const resp = await fetch(base + '/message?token=' + encodeURIComponent(gotifyToken), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title:    '📰 中文新闻 Hub - ' + catLabel,
+      message:  md,
+      priority: 5,
+      extras: {
+        'client::display': { contentType: 'text/markdown' },
+      },
+    }),
+  });
+  if (!resp.ok) throw new Error('Gotify 推送失败: HTTP ' + resp.status);
+  return { channel: 'Gotify', ok: true };
+}
+
 // ── 统一推送入口（优化①⑥）──────────────────────────────────
 async function runAllPush(env, config, { isRetry = false } = {}) {
   // 优化⑥：重试模式，先读取失败渠道，若无则提前返回，避免无谓构建 payload
@@ -722,6 +777,8 @@ async function runAllPush(env, config, { isRetry = false } = {}) {
     { name: 'PushPlus',   fn: pushPushPlus },
     { name: 'Bark',        fn: pushBark },
     { name: 'WxPusher',   fn: pushWxPusher },
+    { name: 'ntfy',        fn: pushNtfy },
+    { name: 'Gotify',      fn: pushGotify },
   ];
 
   // 重试模式只跑上次失败的渠道
@@ -1226,6 +1283,20 @@ function renderHTML(config, env) {
         { key: 'WXPUSHER_APP_TOKEN',  configured: !!(env && env.WXPUSHER_APP_TOKEN) },
         { key: 'WXPUSHER_UIDS',       configured: !!(env && env.WXPUSHER_UIDS),      optional: true },
         { key: 'WXPUSHER_TOPIC_IDS',  configured: !!(env && env.WXPUSHER_TOPIC_IDS), optional: true },
+      ],
+    },
+    {
+      icon: '🔔', name: 'ntfy',
+      vars: [
+        { key: 'NTFY_URL',   configured: !!(env && env.NTFY_URL) },
+        { key: 'NTFY_TOKEN', configured: !!(env && env.NTFY_TOKEN), optional: true },
+      ],
+    },
+    {
+      icon: '📡', name: 'Gotify',
+      vars: [
+        { key: 'GOTIFY_URL',   configured: !!(env && env.GOTIFY_URL) },
+        { key: 'GOTIFY_TOKEN', configured: !!(env && env.GOTIFY_TOKEN) },
       ],
     },
   ];
