@@ -952,130 +952,195 @@ function buildWeatherMessage(city, data) {
   return { plain, md, tg };
 }
 
-async function runWeatherPush(env, config) {
+// KV key：保存天气推送失败的渠道列表，TTL 到当天结束（23h），下次 cron 自动重试
+const WEATHER_FAILED_KEY = 'weather_failed_channels';
+
+async function runWeatherPush(env, config, { isRetry = false } = {}) {
   const city = config.weatherCity?.trim();
   if (!city || config.weatherEnabled === false) return { skipped: true, reason: '天气推送未启用或未设置城市' };
 
-  // 防重推：每天只推一次
-  const today = new Date().toISOString().slice(0, 10);
-  const runKey = 'weather_lastRun_' + today;
-  try {
-    const lastRun = await env.NEWS_CONFIG.get(runKey);
-    if (lastRun) return { skipped: true, reason: '今日天气已推送' };
-  } catch {}
+  // 重试模式：只跑上次失败的渠道；若无失败记录则直接返回
+  let failedChannels = [];
+  if (isRetry) {
+    try {
+      const raw = await env.NEWS_CONFIG.get(WEATHER_FAILED_KEY);
+      failedChannels = raw ? JSON.parse(raw) : [];
+    } catch {}
+    if (failedChannels.length === 0) return { skipped: true, reason: '无待重试的天气渠道' };
+  } else {
+    // 正常推送：防重推，今天已全部推成功则跳过
+    const today = new Date().toISOString().slice(0, 10);
+    const runKey = 'weather_lastRun_' + today;
+    try {
+      const lastRun = await env.NEWS_CONFIG.get(runKey);
+      if (lastRun) return { skipped: true, reason: '今日天气已推送' };
+    } catch {}
+  }
 
+  // 获取天气数据（重试时也重新拉取，保证数据新鲜）
   const data = await fetchWeather(city);
   if (!data) return { ok: false, error: '天气数据获取失败，请检查城市名称' };
 
   const msgs = buildWeatherMessage(city, data);
   if (!msgs) return { ok: false, error: '天气数据解析失败' };
 
-  const results = await Promise.allSettled([
-    // Telegram
-    (async () => {
-      if (!env.TG_TOKEN || !env.TG_CHAT_ID) return { channel: 'Telegram', skipped: true };
-      await sendToTelegramSafe(env, msgs.tg);
-      return { channel: 'Telegram', ok: true };
-    })(),
-    // 飞书
-    (async () => {
-      const webhook = env.FEISHU_WEBHOOK;
-      if (!webhook) return { channel: '飞书', skipped: true };
-      const body = { msg_type: 'interactive', card: { header: { title: { tag: 'plain_text', content: '🌤 早安天气播报 - ' + city }, template: 'turquoise' }, elements: [{ tag: 'markdown', content: msgs.md }] } };
-      const resp = await fetch(webhook, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      const d = await resp.json();
-      if (d.code !== 0) throw new Error('飞书天气推送失败: ' + d.msg);
-      return { channel: '飞书', ok: true };
-    })(),
-    // 钉钉
-    (async () => {
-      const webhook = env.DINGTALK_WEBHOOK;
-      if (!webhook) return { channel: '钉钉', skipped: true };
-      let url = webhook;
-      if (env.DINGTALK_SECRET) {
-        const timestamp = Date.now();
-        const strToSign = timestamp + '\n' + env.DINGTALK_SECRET;
-        const enc = new TextEncoder();
-        const key = await crypto.subtle.importKey('raw', enc.encode(env.DINGTALK_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-        const sig = await crypto.subtle.sign('HMAC', key, enc.encode(strToSign));
-        const b64 = btoa(String.fromCharCode(...new Uint8Array(sig)));
-        url += (url.includes('?') ? '&' : '?') + 'timestamp=' + timestamp + '&sign=' + encodeURIComponent(b64);
-      }
-      const body = { msgtype: 'markdown', markdown: { title: '🌤 早安天气 - ' + city, text: msgs.md } };
-      const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      const d = await resp.json();
-      if (d.errcode !== 0) throw new Error('钉钉天气推送失败: ' + d.errmsg);
-      return { channel: '钉钉', ok: true };
-    })(),
-    // 企业微信
-    (async () => {
-      const webhook = env.WECOM_WEBHOOK;
-      if (!webhook) return { channel: '企业微信', skipped: true };
-      const body = { msgtype: 'markdown', markdown: { content: msgs.md } };
-      const resp = await fetch(webhook, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      const d = await resp.json();
-      if (d.errcode !== 0) throw new Error('企业微信天气推送失败: ' + d.errmsg);
-      return { channel: '企业微信', ok: true };
-    })(),
-    // PushPlus
-    (async () => {
-      const token = env.PUSHPLUS_TOKEN;
-      if (!token) return { channel: 'PushPlus', skipped: true };
-      const body = { token, title: '🌤 早安天气 - ' + city, content: msgs.md, template: 'markdown' };
-      const resp = await fetch('https://www.pushplus.plus/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      const d = await resp.json();
-      if (d.code !== 200) throw new Error('PushPlus天气推送失败: ' + d.msg);
-      return { channel: 'PushPlus', ok: true };
-    })(),
-    // Bark
-    (async () => {
-      const barkUrl = env.BARK_URL;
-      if (!barkUrl) return { channel: 'Bark', skipped: true };
-      const resp = await fetch(barkUrl.replace(/\/$/, ''), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: '🌤 早安天气 - ' + city, body: msgs.plain.slice(0, 1000), group: '天气', icon: 'https://www.google.com/favicon.ico' }) });
-      const d = await resp.json();
-      if (d.code !== 200) throw new Error('Bark天气推送失败: ' + d.message);
-      return { channel: 'Bark', ok: true };
-    })(),
-    // WxPusher
-    (async () => {
-      const appToken = env.WXPUSHER_APP_TOKEN;
-      if (!appToken) return { channel: 'WxPusher', skipped: true };
-      const uids = (env.WXPUSHER_UIDS || '').split(/[,，\s]+/).map(s => s.trim()).filter(Boolean);
-      const topicIds = (env.WXPUSHER_TOPIC_IDS || '').split(/[,，\s]+/).map(s => parseInt(s.trim())).filter(n => !isNaN(n));
-      if (uids.length === 0 && topicIds.length === 0) throw new Error('WxPusher：请配置 WXPUSHER_UIDS 或 WXPUSHER_TOPIC_IDS');
-      const body = { appToken, content: msgs.md, summary: '🌤 早安天气 - ' + city, contentType: 3, uids: uids.length > 0 ? uids : undefined, topicIds: topicIds.length > 0 ? topicIds : undefined, verifyPayType: 0 };
-      const resp = await fetch('https://wxpusher.zjiecode.com/api/send/message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      const d = await resp.json();
-      if (d.code !== 1000) throw new Error('WxPusher天气推送失败: ' + d.msg);
-      return { channel: 'WxPusher', ok: true };
-    })(),
-    // ntfy
-    (async () => {
-      const ntfyUrl = env.NTFY_URL;
-      if (!ntfyUrl) return { channel: 'ntfy', skipped: true };
-      const headers = { 'Title': '🌤 早安天气 - ' + city, 'Priority': 'default', 'Tags': 'sunny', 'Content-Type': 'text/plain; charset=utf-8' };
-      if (env.NTFY_TOKEN) headers['Authorization'] = 'Bearer ' + env.NTFY_TOKEN;
-      const resp = await fetch(ntfyUrl, { method: 'POST', headers, body: msgs.plain.slice(0, 4000) });
-      if (!resp.ok) throw new Error('ntfy天气推送失败: HTTP ' + resp.status);
-      return { channel: 'ntfy', ok: true };
-    })(),
-    // Gotify
-    (async () => {
-      const gotifyUrl = env.GOTIFY_URL;
-      const gotifyToken = env.GOTIFY_TOKEN;
-      if (!gotifyUrl || !gotifyToken) return { channel: 'Gotify', skipped: true };
-      const resp = await fetch(gotifyUrl.replace(/\/$/, '') + '/message?token=' + encodeURIComponent(gotifyToken), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: '🌤 早安天气 - ' + city, message: msgs.md, priority: 5, extras: { 'client::display': { contentType: 'text/markdown' } } }) });
-      if (!resp.ok) throw new Error('Gotify天气推送失败: HTTP ' + resp.status);
-      return { channel: 'Gotify', ok: true };
-    })(),
-  ]);
+  // 各渠道推送函数，统一接口：返回 { channel, ok } 或 { channel, skipped } 或 throw
+  const allPushers = [
+    {
+      name: 'Telegram',
+      fn: async () => {
+        if (!env.TG_TOKEN || !env.TG_CHAT_ID) return { channel: 'Telegram', skipped: true };
+        await sendToTelegramSafe(env, msgs.tg);
+        return { channel: 'Telegram', ok: true };
+      },
+    },
+    {
+      name: '飞书',
+      fn: async () => {
+        const webhook = env.FEISHU_WEBHOOK;
+        if (!webhook) return { channel: '飞书', skipped: true };
+        const body = { msg_type: 'interactive', card: { header: { title: { tag: 'plain_text', content: '🌤 早安天气播报 - ' + city }, template: 'turquoise' }, elements: [{ tag: 'markdown', content: msgs.md }] } };
+        const resp = await fetch(webhook, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const d = await resp.json();
+        if (d.code !== 0) throw new Error('飞书天气推送失败: ' + d.msg);
+        return { channel: '飞书', ok: true };
+      },
+    },
+    {
+      name: '钉钉',
+      fn: async () => {
+        const webhook = env.DINGTALK_WEBHOOK;
+        if (!webhook) return { channel: '钉钉', skipped: true };
+        let url = webhook;
+        if (env.DINGTALK_SECRET) {
+          const timestamp = Date.now();
+          const strToSign = timestamp + '\n' + env.DINGTALK_SECRET;
+          const enc = new TextEncoder();
+          const key = await crypto.subtle.importKey('raw', enc.encode(env.DINGTALK_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+          const sig = await crypto.subtle.sign('HMAC', key, enc.encode(strToSign));
+          const b64 = btoa(String.fromCharCode(...new Uint8Array(sig)));
+          url += (url.includes('?') ? '&' : '?') + 'timestamp=' + timestamp + '&sign=' + encodeURIComponent(b64);
+        }
+        const body = { msgtype: 'markdown', markdown: { title: '🌤 早安天气 - ' + city, text: msgs.md } };
+        const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const d = await resp.json();
+        if (d.errcode !== 0) throw new Error('钉钉天气推送失败: ' + d.errmsg);
+        return { channel: '钉钉', ok: true };
+      },
+    },
+    {
+      name: '企业微信',
+      fn: async () => {
+        const webhook = env.WECOM_WEBHOOK;
+        if (!webhook) return { channel: '企业微信', skipped: true };
+        const body = { msgtype: 'markdown', markdown: { content: msgs.md } };
+        const resp = await fetch(webhook, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const d = await resp.json();
+        if (d.errcode !== 0) throw new Error('企业微信天气推送失败: ' + d.errmsg);
+        return { channel: '企业微信', ok: true };
+      },
+    },
+    {
+      name: 'PushPlus',
+      fn: async () => {
+        const token = env.PUSHPLUS_TOKEN;
+        if (!token) return { channel: 'PushPlus', skipped: true };
+        const body = { token, title: '🌤 早安天气 - ' + city, content: msgs.md, template: 'markdown' };
+        const resp = await fetch('https://www.pushplus.plus/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const d = await resp.json();
+        if (d.code !== 200) throw new Error('PushPlus天气推送失败: ' + d.msg);
+        return { channel: 'PushPlus', ok: true };
+      },
+    },
+    {
+      name: 'Bark',
+      fn: async () => {
+        const barkUrl = env.BARK_URL;
+        if (!barkUrl) return { channel: 'Bark', skipped: true };
+        const resp = await fetch(barkUrl.replace(/\/$/, ''), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: '🌤 早安天气 - ' + city, body: msgs.plain.slice(0, 1000), group: '天气', icon: 'https://www.google.com/favicon.ico' }) });
+        const d = await resp.json();
+        if (d.code !== 200) throw new Error('Bark天气推送失败: ' + d.message);
+        return { channel: 'Bark', ok: true };
+      },
+    },
+    {
+      name: 'WxPusher',
+      fn: async () => {
+        const appToken = env.WXPUSHER_APP_TOKEN;
+        if (!appToken) return { channel: 'WxPusher', skipped: true };
+        const uids = (env.WXPUSHER_UIDS || '').split(/[,，\s]+/).map(s => s.trim()).filter(Boolean);
+        const topicIds = (env.WXPUSHER_TOPIC_IDS || '').split(/[,，\s]+/).map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+        if (uids.length === 0 && topicIds.length === 0) throw new Error('WxPusher：请配置 WXPUSHER_UIDS 或 WXPUSHER_TOPIC_IDS');
+        const body = { appToken, content: msgs.md, summary: '🌤 早安天气 - ' + city, contentType: 3, uids: uids.length > 0 ? uids : undefined, topicIds: topicIds.length > 0 ? topicIds : undefined, verifyPayType: 0 };
+        const resp = await fetch('https://wxpusher.zjiecode.com/api/send/message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const d = await resp.json();
+        if (d.code !== 1000) throw new Error('WxPusher天气推送失败: ' + d.msg);
+        return { channel: 'WxPusher', ok: true };
+      },
+    },
+    {
+      name: 'ntfy',
+      fn: async () => {
+        const ntfyUrl = env.NTFY_URL;
+        if (!ntfyUrl) return { channel: 'ntfy', skipped: true };
+        const headers = { 'Title': '🌤 早安天气 - ' + city, 'Priority': 'default', 'Tags': 'sunny', 'Content-Type': 'text/plain; charset=utf-8' };
+        if (env.NTFY_TOKEN) headers['Authorization'] = 'Bearer ' + env.NTFY_TOKEN;
+        const resp = await fetch(ntfyUrl, { method: 'POST', headers, body: msgs.plain.slice(0, 4000) });
+        if (!resp.ok) throw new Error('ntfy天气推送失败: HTTP ' + resp.status);
+        return { channel: 'ntfy', ok: true };
+      },
+    },
+    {
+      name: 'Gotify',
+      fn: async () => {
+        const gotifyUrl = env.GOTIFY_URL;
+        const gotifyToken = env.GOTIFY_TOKEN;
+        if (!gotifyUrl || !gotifyToken) return { channel: 'Gotify', skipped: true };
+        const resp = await fetch(gotifyUrl.replace(/\/$/, '') + '/message?token=' + encodeURIComponent(gotifyToken), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: '🌤 早安天气 - ' + city, message: msgs.md, priority: 5, extras: { 'client::display': { contentType: 'text/markdown' } } }) });
+        if (!resp.ok) throw new Error('Gotify天气推送失败: HTTP ' + resp.status);
+        return { channel: 'Gotify', ok: true };
+      },
+    },
+  ];
+
+  // 重试模式只跑上次失败的渠道，正常模式跑全部
+  const pushers = isRetry
+    ? allPushers.filter(p => failedChannels.includes(p.name))
+    : allPushers;
+
+  const results = await Promise.allSettled(pushers.map(p => p.fn()));
+
+  // 统计失败渠道（排除"未配置"的跳过项，跳过不算失败）
+  const newFailedChannels = [];
+  const summary = results.map((r, i) => {
+    if (r.status === 'fulfilled') {
+      const v = r.value;
+      if (v.skipped) return v.channel + ':未配置';
+      return v.channel + ':✅';
+    }
+    newFailedChannels.push(pushers[i].name);
+    return pushers[i].name + ':❌(' + (r.reason?.message || '未知') + ')';
+  });
+
+  // 有失败渠道 → 写入 KV（TTL 到当天结束，约 23h），等待下次 cron 自动重试
+  // 全部成功 → 清除失败记录
+  if (newFailedChannels.length > 0) {
+    try {
+      await env.NEWS_CONFIG.put(WEATHER_FAILED_KEY, JSON.stringify(newFailedChannels), { expirationTtl: 82800 }); // 23h
+    } catch {}
+  } else {
+    try { await env.NEWS_CONFIG.delete(WEATHER_FAILED_KEY); } catch {}
+  }
 
   const anySuccess = results.some(r => r.status === 'fulfilled' && r.value?.ok);
-  if (anySuccess) {
-    try { await env.NEWS_CONFIG.put(runKey, '1', { expirationTtl: 86400 }); } catch {}
+
+  // 首次推送时只要有一个渠道成功，就记录今日已推（避免重推成功渠道）
+  if (!isRetry && anySuccess) {
+    const today = new Date().toISOString().slice(0, 10);
+    try { await env.NEWS_CONFIG.put('weather_lastRun_' + today, '1', { expirationTtl: 86400 }); } catch {}
   }
-  const summary = results.map(r => r.status === 'fulfilled' ? (r.value.skipped ? r.value.channel + ':未配置' : r.value.channel + ':✅') : '❌(' + (r.reason?.message || '未知') + ')');
-  return { ok: anySuccess, summary };
+
+  return { ok: anySuccess, summary, failedChannels: newFailedChannels };
 }
 
 
@@ -1147,14 +1212,20 @@ async function runNewsPush(env) {
   // 获取北京时间的小时和分钟
   const now = new Date();
   const bjTimeStr = now.toLocaleString('en-US', { timeZone: 'Asia/Shanghai', hour: 'numeric', minute: 'numeric', hour12: false });
-  // en-US hour12:false 格式如 "7:30" 或 "23:05"
   const [hourStr, minuteStr] = bjTimeStr.split(':');
   const hour   = parseInt(hourStr);
   const minute = parseInt(minuteStr);
 
-  // ── 天气推送：每天 7:30 北京时间 ──────────────────────────
-  if (hour === 7 && minute >= 28 && minute <= 35) {
-    // 允许 ±3 分钟窗口，防止 cron 偏移漏推
+  // ── 天气推送失败重试：每次 cron 触发时检查，有失败渠道就继续重试 ──
+  try {
+    const weatherFailed = await env.NEWS_CONFIG.get(WEATHER_FAILED_KEY);
+    if (weatherFailed) {
+      await runWeatherPush(env, config, { isRetry: true });
+    }
+  } catch {}
+
+  // ── 天气正常推送：每天 7:30 北京时间（允许 ±5 分钟窗口） ──
+  if (hour === 7 && minute >= 25 && minute <= 35) {
     await runWeatherPush(env, config);
   }
 
@@ -1166,11 +1237,10 @@ async function runNewsPush(env) {
   const today = now.toISOString().slice(0, 10);
   const runKey = 'lastRun_' + today + '_' + hour;
 
-  // 优化⑥：检查是否有上次失败需要重试
+  // 检查是否有新闻推送失败渠道需要重试
   let failedRaw = null;
   try { failedRaw = await env.NEWS_CONFIG.get('push_failed_channels'); } catch {}
   if (failedRaw) {
-    // 有失败渠道，先尝试重试（不受整点限制）
     await runAllPush(env, config, { isRetry: true });
   }
 
@@ -1199,8 +1269,9 @@ async function handleTestWeather(env) {
     if (!data) return Response.json({ success: false, message: '天气数据获取失败，请检查城市名称（支持中文或英文，如"北京"/"Beijing"）' });
     const msgs = buildWeatherMessage(city, data);
     if (!msgs) return Response.json({ success: false, message: '天气数据解析失败' });
-    // 测试模式：清除今日防重推记录，确保能推送
+    // 测试模式：清除今日防重推记录和失败渠道记录，确保能推送
     try { await env.NEWS_CONFIG.delete('weather_lastRun_' + new Date().toISOString().slice(0, 10)); } catch {}
+    try { await env.NEWS_CONFIG.delete(WEATHER_FAILED_KEY); } catch {}
     const result = await runWeatherPush(env, config);
     if (result.skipped) return Response.json({ success: false, message: result.reason });
     return Response.json({ success: result.ok, message: '天气推送完成！\n' + (result.summary || []).join(' | '), preview: msgs.plain });
