@@ -7,7 +7,7 @@
 ![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
 ![Media Sources](https://img.shields.io/badge/媒体来源-23家-blue)
-![Push Channels](https://img.shields.io/badge/推送渠道-7个-purple)
+![Push Channels](https://img.shields.io/badge/推送渠道-9个-purple)
 ![AI Powered](https://img.shields.io/badge/AI-Llama_3.1-orange)
 
 **[部署步骤](#-部署步骤) · [推送渠道](#-推送渠道配置) · [环境变量](#-环境变量一览) · [常见问题](#-常见问题)**
@@ -23,7 +23,7 @@
 | ⚡ | **零服务器** | 完全运行在 Cloudflare Workers，无需购买服务器、无需维护 |
 | 🆓 | **完全免费** | Workers 免费额度每天 10 万次请求，完全够用 |
 | 🌐 | **23 家媒体** | 港台海外主流中文媒体，RSS 实时聚合 |
-| 📬 | **7 个推送渠道** | Telegram / 飞书 / 钉钉 / 企业微信 / PushPlus / Bark / WxPusher |
+| 📬 | **9 个推送渠道** | Telegram / 飞书 / 钉钉 / 企业微信 / PushPlus / Bark / WxPusher / ntfy / Gotify |
 | 🤖 | **AI 摘要** | Workers AI（Llama 3.1）每日要点提炼，按小时缓存 |
 | 🔁 | **智能去重** | Jaccard 相似度算法 + 跨批次历史去重，24 小时内每条新闻最多推一次 |
 | 🔄 | **失败重试** | 推送失败渠道自动记录，下次触发时补发 |
@@ -171,6 +171,60 @@ App Store 下载 [Bark](https://apps.apple.com/app/bark-customed-notifications/i
 
 ---
 
+### 🔔 ntfy
+
+| 变量名 | 是否必填 | 说明 |
+|--------|----------|------|
+| `NTFY_URL` | ✅ 必填 | 推送地址，含 topic，如 `https://ntfy.sh/your_topic` |
+| `NTFY_TOKEN` | 可选 | 访问令牌（服务端开启认证时填写） |
+
+<details>
+<summary>配置说明</summary>
+
+**使用公共服务器（ntfy.sh）：**
+1. 访问 [ntfy.sh](https://ntfy.sh)，直接用任意 topic 名称（无需注册）
+2. 填入 `NTFY_URL`，如 `https://ntfy.sh/my-news-hub-abc123`
+3. 手机端订阅同一 topic 即可收到推送
+
+**自托管服务器：**
+```
+NTFY_URL = https://ntfy.example.com/your_topic
+NTFY_TOKEN = your_access_token   # 仅在服务端配置了认证时需要填写
+```
+
+> 💡 ntfy 完全开源，支持 Android / iOS / Web，无需账号，自托管友好。消息以纯文本格式发送（截取前 4000 字符）。
+
+</details>
+
+---
+
+### 📡 Gotify
+
+| 变量名 | 是否必填 | 说明 |
+|--------|----------|------|
+| `GOTIFY_URL` | ✅ 必填 | Gotify 服务地址，如 `https://gotify.example.com` |
+| `GOTIFY_TOKEN` | ✅ 必填 | 应用 Token（在 Gotify 后台「Apps」中创建应用获得） |
+
+<details>
+<summary>配置说明</summary>
+
+1. 部署 [Gotify 服务端](https://gotify.net/docs/install)（Docker 一键部署）
+2. 在 Gotify 后台 → **Apps** → 创建新应用 → 复制 Token
+3. 填入 `GOTIFY_URL`（服务器地址，不含路径）和 `GOTIFY_TOKEN`
+
+```
+GOTIFY_URL   = https://gotify.example.com
+GOTIFY_TOKEN = AbCdEfGhIjKlMnOp
+```
+
+消息以 **Markdown 格式**发送（`priority: 5`），客户端支持 Android / Web，iOS 需借助 [Gotify-APNS](https://github.com/gotify/server/issues/47) 中转。
+
+> ⚠️ Gotify 为**自托管**服务，需要自行部署服务端，不提供公共云服务。
+
+</details>
+
+---
+
 ## 🗺️ 环境变量一览
 
 | 变量名 | 渠道 | 必填 |
@@ -186,6 +240,10 @@ App Store 下载 [Bark](https://apps.apple.com/app/bark-customed-notifications/i
 | `WXPUSHER_APP_TOKEN` | WxPusher | ✅ |
 | `WXPUSHER_UIDS` | WxPusher | 二选一 |
 | `WXPUSHER_TOPIC_IDS` | WxPusher | 二选一 |
+| `NTFY_URL` | ntfy | ✅ |
+| `NTFY_TOKEN` | ntfy | 可选 |
+| `GOTIFY_URL` | Gotify | ✅ |
+| `GOTIFY_TOKEN` | Gotify | ✅ |
 
 > 未配置的渠道自动跳过，已配置渠道**全部并发推送**，互不影响。
 
