@@ -588,7 +588,7 @@ async function pushWecom(env, config, payload) {
   if (!webhook)
     return { channel: "\u4F01\u4E1A\u5FAE\u4FE1", skipped: true };
   const { md } = payload;
-  const body = { msgtype: "markdown", markdown: { content: md } };
+  const body = { msgtype: "text", text: { content: md } };
   const resp = await fetch(webhook, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
