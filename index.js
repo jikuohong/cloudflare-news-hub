@@ -13,6 +13,10 @@ var DEFAULT_CONFIG = {
   pushHours: "8:00,12:00,16:00,20:00",
   enabled: true,
   aiSummary: true,
+  aiProvider: "workersai-llama",
+  deepseekApiKey: "",
+  openaiApiKey: "",
+  nvidiaApiKey: "",
   sources: ["rfa", "voachinese", "bbc_chinese", "bbc_trad", "hk01", "mingpao", "orientaldaily", "singtao", "hkej", "appledaily_tw", "udn", "cna", "rti", "storm", "thenewslens", "ettoday", "setn", "initium", "dwnews", "chosun", "zaobao", "duowei", "googlezh"],
   // 天气推送
   weatherCity: "",
@@ -324,21 +328,105 @@ function escapeTg(str) {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 __name(escapeTg, "escapeTg");
-async function summarizeWithAI(env, items, config) {
-  if (!env.AI)
-    return null;
-  try {
-    const catLabel = (CATEGORIES[config.category] || {}).label || "\u7EFC\u5408";
-    const newsList = items.map((item, i) => i + 1 + ". " + item.title).join("\n");
-    const prompt = "\u4F60\u662F\u4E13\u4E1A\u65B0\u95FB\u7F16\u8F91\u3002\u4EE5\u4E0B\u662F\u4ECA\u65E5" + catLabel + "\u65B0\u95FB\u6807\u9898\uFF0C\u8BF7\uFF1A\n1. \u63D0\u70BC 3-5 \u4E2A\u6700\u91CD\u8981\u8981\u70B9\uFF0C\u6BCF\u70B9 1-2 \u53E5\uFF0C\u7B80\u6D01\u4E13\u4E1A\n2. \u6700\u540E\u4E00\u53E5\u7ED9\u51FA\u4ECA\u65E5\u8D8B\u52BF\u6216\u503C\u5F97\u5173\u6CE8\u7684\u4FE1\u53F7\n\n" + newsList + "\n\n\u76F4\u63A5\u8F93\u51FA\u6458\u8981\uFF0C\u4E0D\u8981\u524D\u7F00\u3002";
-    const response = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+// ─── AI 多模型路由 ────────────────────────────────────────
+async function callOpenAICompat(apiKey, baseUrl, model, prompt) {
+  const resp = await fetch(baseUrl + "/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
+    body: JSON.stringify({
+      model,
       messages: [{ role: "user", content: prompt }],
-      max_tokens: 600
-    });
-    return response?.choices?.[0]?.message?.content?.trim() || null;
-  } catch {
-    return null;
+      max_tokens: 600,
+      temperature: 0.3,
+    }),
+    signal: AbortSignal.timeout(45000),
+  });
+  if (!resp.ok) throw new Error("API error " + resp.status);
+  const data = await resp.json();
+  return data.choices?.[0]?.message?.content?.trim() || null;
+}
+
+async function callWorkersAI(env, prompt) {
+  const resp = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+    messages: [{ role: "user", content: prompt }],
+    max_tokens: 600,
+  });
+  return resp?.response?.trim() || resp?.choices?.[0]?.message?.content?.trim() || null;
+}
+
+async function callNvidiaGLM(apiKey, prompt) {
+  const resp = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
+    body: JSON.stringify({
+      model: "z-ai/glm4.7",
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 600,
+      temperature: 0.3,
+      extra_body: { chat_template_kwargs: { enable_thinking: true, clear_thinking: true } },
+    }),
+    signal: AbortSignal.timeout(60000),
+  });
+  if (!resp.ok) throw new Error("NVIDIA API error " + resp.status);
+  const data = await resp.json();
+  return data.choices?.[0]?.message?.content?.trim() || null;
+}
+
+// 降级链：按能力从强到弱
+const AI_FALLBACK_CHAIN = [
+  "deepseek-r1", "openai-gpt4o", "deepseek",
+  "nvidia-glm4-7", "openai-gpt4o-mini",
+  "workersai-llama", "workersai-mistral", "workersai-qwen",
+];
+
+function hasAICred(provider, env, config) {
+  const dsKey  = config.deepseekApiKey || "";
+  const oaiKey = config.openaiApiKey   || "";
+  const nvKey  = config.nvidiaApiKey   || "";
+  if (provider.startsWith("deepseek"))  return !!dsKey;
+  if (provider.startsWith("openai"))    return !!oaiKey;
+  if (provider.startsWith("nvidia"))    return !!nvKey;
+  if (provider.startsWith("workersai")) return !!env.AI;
+  return false;
+}
+
+async function callOneProvider(provider, env, config, prompt) {
+  const dsKey  = config.deepseekApiKey || "";
+  const oaiKey = config.openaiApiKey   || "";
+  const nvKey  = config.nvidiaApiKey   || "";
+  switch (provider) {
+    case "deepseek-r1":       return callOpenAICompat(dsKey,  "https://api.deepseek.com",  "deepseek-reasoner", prompt);
+    case "deepseek":          return callOpenAICompat(dsKey,  "https://api.deepseek.com",  "deepseek-chat",     prompt);
+    case "openai-gpt4o":      return callOpenAICompat(oaiKey, "https://api.openai.com/v1", "gpt-4o",            prompt);
+    case "openai-gpt4o-mini": return callOpenAICompat(oaiKey, "https://api.openai.com/v1", "gpt-4o-mini",       prompt);
+    case "nvidia-glm4-7":     return callNvidiaGLM(nvKey, prompt);
+    case "workersai-llama":   return callWorkersAI(env, prompt);
+    case "workersai-mistral": return callWorkersAI(env, prompt);
+    case "workersai-qwen":    return callWorkersAI(env, prompt);
+    default:                  return callWorkersAI(env, prompt);
   }
+}
+
+async function summarizeWithAI(env, items, config) {
+  const catLabel = (CATEGORIES[config.category] || {}).label || "综合";
+  const newsList = items.map((item, i) => (i + 1) + ". " + item.title).join("\n");
+  const prompt = "你是专业新闻编辑。以下是今日" + catLabel + "新闻标题，请：\n1. 提炼 3-5 个最重要要点，每点 1-2 句，简洁专业\n2. 最后一句给出今日趋势或值得关注的信号\n\n" + newsList + "\n\n直接输出摘要，不要前缀。";
+
+  const primary = config.aiProvider || "workersai-llama";
+  const queue = [primary, ...AI_FALLBACK_CHAIN.filter(p => p !== primary)]
+    .filter(p => hasAICred(p, env, config));
+
+  if (queue.length === 0) return null;
+
+  for (const provider of queue) {
+    try {
+      const result = await callOneProvider(provider, env, config, prompt);
+      if (result) return result;
+    } catch (e) {
+      console.warn("[AI摘要] " + provider + " 失败: " + e.message + (provider !== primary ? "" : "，尝试降级"));
+    }
+  }
+  return null;
 }
 __name(summarizeWithAI, "summarizeWithAI");
 async function getAISummary(env, items, config) {
@@ -1416,6 +1504,10 @@ async function saveConfig() {
     pushHours: document.getElementById('hour-input').value,
     enabled: document.getElementById('enabled-toggle').checked,
     aiSummary: document.getElementById('ai-toggle').checked,
+    aiProvider:      document.getElementById('ai-provider-select').value,
+    deepseekApiKey:  document.getElementById('deepseek-key-input').value.trim(),
+    openaiApiKey:    document.getElementById('openai-key-input').value.trim(),
+    nvidiaApiKey:    document.getElementById('nvidia-key-input').value.trim(),
     weatherCity: document.getElementById('weather-city-input').value.trim(),
     weatherHours: document.getElementById('weather-hours-input').value.trim() || '7',
     weatherEnabled: document.getElementById('weather-enabled-toggle').checked,
@@ -2153,6 +2245,39 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
     '          <span class="toggle-label">AI \u6458\u8981</span>',
     '          <label class="toggle"><input type="checkbox" id="ai-toggle"' + (config.aiSummary !== false ? " checked" : "") + '><span class="toggle-slider"></span></label>',
     "        </div>",
+    '        <div class="form-group" style="margin-top:10px">',
+    '          <label class="form-label">AI 提供商</label>',
+    '          <select class="form-control" id="ai-provider-select">',
+    '            <optgroup label="── Cloudflare Workers AI（免费）──">',
+    '              <option value="workersai-llama"' + (config.aiProvider === "workersai-llama"   ? " selected" : "") + '>Llama 3.1 8B（推荐）</option>',
+    '              <option value="workersai-qwen"' + (config.aiProvider === "workersai-qwen"    ? " selected" : "") + '>Llama 3.2 3B（轻量）</option>',
+    '              <option value="workersai-mistral"' + (config.aiProvider === "workersai-mistral" ? " selected" : "") + '>Mistral 7B</option>',
+    '            </optgroup>',
+    '            <optgroup label="── DeepSeek ──">',
+    '              <option value="deepseek-r1"' + (config.aiProvider === "deepseek-r1" ? " selected" : "") + '>DeepSeek R1（强推理）</option>',
+    '              <option value="deepseek"' + (config.aiProvider === "deepseek" ? " selected" : "") + '>DeepSeek V3（推荐）</option>',
+    '            </optgroup>',
+    '            <optgroup label="── OpenAI ──">',
+    '              <option value="openai-gpt4o"' + (config.aiProvider === "openai-gpt4o" ? " selected" : "") + '>GPT-4o</option>',
+    '              <option value="openai-gpt4o-mini"' + (config.aiProvider === "openai-gpt4o-mini" ? " selected" : "") + '>GPT-4o Mini</option>',
+    '            </optgroup>',
+    '            <optgroup label="── NVIDIA NIM ──">',
+    '              <option value="nvidia-glm4-7"' + (config.aiProvider === "nvidia-glm4-7" ? " selected" : "") + '>GLM4.7（需填 NVIDIA Key）</option>',
+    '            </optgroup>',
+    '          </select>',
+    '        </div>',
+    '        <div class="form-group">',
+    '          <label class="form-label">DeepSeek API Key</label>',
+    '          <input class="form-control" type="password" id="deepseek-key-input" placeholder="sk-xxxx" value="' + (config.deepseekApiKey || '') + '">',
+    '        </div>',
+    '        <div class="form-group">',
+    '          <label class="form-label">OpenAI API Key</label>',
+    '          <input class="form-control" type="password" id="openai-key-input" placeholder="sk-xxxx" value="' + (config.openaiApiKey || '') + '">',
+    '        </div>',
+    '        <div class="form-group">',
+    '          <label class="form-label">NVIDIA API Key</label>',
+    '          <input class="form-control" type="password" id="nvidia-key-input" placeholder="nvapi-xxxx" value="' + (config.nvidiaApiKey || '') + '">',
+    '        </div>',
     // ── 天气推送设置 ──
     '        <div class="weather-section">',
     '          <div class="weather-section-title">\u2601\uFE0F \u5929\u6C14\u63A8\u9001</div>',
