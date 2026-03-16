@@ -1028,15 +1028,24 @@ function buildWeatherMessage(city, data) {
   return { plain, md, tg };
 }
 __name(buildWeatherMessage, "buildWeatherMessage");
-var WEATHER_FAILED_KEY = "weather_failed_channels";
-async function runWeatherPush(env, config, { isRetry = false } = {}) {
-  const city = config.weatherCity?.trim();
-  if (!city || config.weatherEnabled === false)
-    return { skipped: true, reason: "\u5929\u6C14\u63A8\u9001\u672A\u542F\u7528\u6216\u672A\u8BBE\u7F6E\u57CE\u5E02" };
+// 解析多城市列表（逗号/中文逗号/空格分隔）
+function parseCities(cityStr) {
+  return String(cityStr || "").split(/[,，\s]+/).map((s) => s.trim()).filter(Boolean);
+}
+__name(parseCities, "parseCities");
+
+function weatherFailedKey(city) {
+  return "weather_failed_channels:" + city;
+}
+__name(weatherFailedKey, "weatherFailedKey");
+
+// 针对单个城市推送天气
+async function runWeatherPushOne(env, config, city, { isRetry = false } = {}) {
+  const failedKey = weatherFailedKey(city);
   let failedChannels = [];
   if (isRetry) {
     try {
-      const raw = await env.NEWS_CONFIG.get(WEATHER_FAILED_KEY);
+      const raw = await env.NEWS_CONFIG.get(failedKey);
       failedChannels = raw ? JSON.parse(raw) : [];
     } catch {
     }
@@ -1200,20 +1209,45 @@ async function runWeatherPush(env, config, { isRetry = false } = {}) {
   });
   if (newFailedChannels.length > 0) {
     try {
-      await env.NEWS_CONFIG.put(WEATHER_FAILED_KEY, JSON.stringify(newFailedChannels), { expirationTtl: 82800 });
+      await env.NEWS_CONFIG.put(failedKey, JSON.stringify(newFailedChannels), { expirationTtl: 82800 });
     } catch {
     }
   } else {
     try {
-      await env.NEWS_CONFIG.delete(WEATHER_FAILED_KEY);
+      await env.NEWS_CONFIG.delete(failedKey);
     } catch {
     }
   }
   const anySuccess = results.some((r) => r.status === "fulfilled" && r.value?.ok);
 
-  return { ok: anySuccess, summary, failedChannels: newFailedChannels };
+  return { ok: anySuccess, city, summary, failedChannels: newFailedChannels };
 }
-__name(runWeatherPush, "runWeatherPush");
+__name(runWeatherPushOne, "runWeatherPushOne");
+
+// 多城市天气推送入口：遍历所有城市依次推送
+async function runWeatherPush(env, config, { isRetry = false } = {}) {
+  if (config.weatherEnabled === false)
+    return { skipped: true, reason: "\u5929\u6C14\u63A8\u9001\u5DF2\u5173\u95ED" };
+  const cities = parseCities(config.weatherCity);
+  if (cities.length === 0)
+    return { skipped: true, reason: "\u5929\u6C14\u63A8\u9001\u672A\u542F\u7528\u6216\u672A\u8BBE\u7F6E\u57CE\u5E02" };
+  const allResults = [];
+  for (const city of cities) {
+    try {
+      const r = await runWeatherPushOne(env, config, city, { isRetry });
+      allResults.push(r);
+    } catch (e) {
+      allResults.push({ ok: false, city, error: e.message });
+    }
+    // 多城市间稍作延迟，避免频率限制
+    if (cities.length > 1) await new Promise((res) => setTimeout(res, 600));
+  }
+  const anyOk = allResults.some((r) => r.ok);
+  const summary = allResults.flatMap((r) =>
+    r.skipped ? [] : (r.summary || ["\u{1F4CD}" + r.city + (r.error ? ":\u274C" + r.error : "")])
+  );
+  return { ok: anyOk, cities, summary, results: allResults };
+}
 async function runAllPush(env, config, { isRetry = false } = {}) {
   let failedChannels = [];
   if (isRetry) {
@@ -1277,10 +1311,14 @@ async function runNewsPush(env) {
   const [hourStr, minuteStr] = bjTimeStr.split(":");
   const hour = parseInt(hourStr);
   const minute = parseInt(minuteStr);
+  // 检查各城市是否有待重试的失败推送渠道
   try {
-    const weatherFailed = await env.NEWS_CONFIG.get(WEATHER_FAILED_KEY);
-    if (weatherFailed) {
-      await runWeatherPush(env, config, { isRetry: true });
+    const citiesToRetry = parseCities(config.weatherCity);
+    for (const city of citiesToRetry) {
+      try {
+        const raw = await env.NEWS_CONFIG.get(weatherFailedKey(city));
+        if (raw) await runWeatherPushOne(env, config, city, { isRetry: true });
+      } catch {}
     }
   } catch {
   }
@@ -1342,27 +1380,48 @@ __name(handleTestPush, "handleTestPush");
 async function handleTestWeather(env) {
   try {
     const config = await getConfig(env);
-    const city = config.weatherCity?.trim();
-    if (!city)
-      return Response.json({ success: false, message: "\u8BF7\u5148\u5728\u63A8\u9001\u8BBE\u7F6E\u4E2D\u586B\u5199\u57CE\u5E02\u540D\u79F0\u5E76\u4FDD\u5B58" });
-    const data = await fetchWeather(city);
-    if (!data)
-      return Response.json({ success: false, message: '\u5929\u6C14\u6570\u636E\u83B7\u53D6\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u57CE\u5E02\u540D\u79F0\uFF08\u652F\u6301\u4E2D\u6587\u6216\u82F1\u6587\uFF0C\u5982"\u5317\u4EAC"/"Beijing"\uFF09' });
-    const msgs = buildWeatherMessage(city, data);
-    if (!msgs)
-      return Response.json({ success: false, message: "\u5929\u6C14\u6570\u636E\u89E3\u6790\u5931\u8D25" });
-    try {
-      await env.NEWS_CONFIG.delete("weather_lastRun_" + (/* @__PURE__ */ new Date()).toISOString().slice(0, 10));
-    } catch {
+    const cities = parseCities(config.weatherCity);
+    if (cities.length === 0)
+      return Response.json({ success: false, message: "\u8BF7\u5148\u5728\u63A8\u9001\u8BBE\u7F6E\u4E2D\u586B\u5199\u57CE\u5E02\u540D\u79F0\u5E76\u4FDD\u5B58\uFF08\u652F\u6301\u591A\u4E2A\u57CE\u5E02\uFF0C\u9017\u53F7\u5206\u9694\uFF09" });
+
+    // 清除所有城市的上次运行记录，确保测试能正常触发
+    const today = new Date().toISOString().slice(0, 10);
+    for (const city of cities) {
+      try { await env.NEWS_CONFIG.delete(weatherFailedKey(city)); } catch {}
     }
-    try {
-      await env.NEWS_CONFIG.delete(WEATHER_FAILED_KEY);
-    } catch {
+    // 兼容旧版单城市 key
+    try { await env.NEWS_CONFIG.delete("weather_failed_channels"); } catch {}
+    try { await env.NEWS_CONFIG.delete("weather_lastRun_" + today); } catch {}
+
+    // 获取所有城市天气预览并推送
+    const previews = [];
+    const summaryLines = [];
+    let anyOk = false;
+
+    for (const city of cities) {
+      const data = await fetchWeather(city);
+      if (!data) {
+        summaryLines.push("\u{1F4CD}" + city + ": \u5929\u6C14\u6570\u636E\u83B7\u53D6\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u57CE\u5E02\u540D\u79F0");
+        continue;
+      }
+      const msgs = buildWeatherMessage(city, data);
+      if (!msgs) {
+        summaryLines.push("\u{1F4CD}" + city + ": \u5929\u6C14\u6570\u636E\u89E3\u6790\u5931\u8D25");
+        continue;
+      }
+      previews.push(msgs.plain);
+      const result = await runWeatherPushOne(env, config, city);
+      if (result.skipped) {
+        summaryLines.push("\u{1F4CD}" + city + ": \u5DF2\u8DF3\u8FC7 (" + (result.reason || "") + ")");
+      } else {
+        anyOk = anyOk || result.ok;
+        summaryLines.push("\u{1F4CD}" + city + ": " + (result.summary || []).join(" | "));
+      }
+      if (cities.length > 1) await new Promise((r) => setTimeout(r, 600));
     }
-    const result = await runWeatherPush(env, config);
-    if (result.skipped)
-      return Response.json({ success: false, message: result.reason });
-    return Response.json({ success: result.ok, message: "\u5929\u6C14\u63A8\u9001\u5B8C\u6210\uFF01\n" + (result.summary || []).join(" | "), preview: msgs.plain });
+
+    const message = "\u5929\u6C14\u63A8\u9001\u5B8C\u6210\uFF01\u5171 " + cities.length + " \u4E2A\u57CE\u5E02\n" + summaryLines.join("\n");
+    return Response.json({ success: anyOk, message, preview: previews.join("\n\n" + "─".repeat(30) + "\n\n") });
   } catch (e) {
     return Response.json({ success: false, message: e.message }, { status: 500 });
   }
@@ -2288,10 +2347,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
     '          <div class="form-group" style="margin-bottom:6px">',
     '            <label class="form-label">\u57CE\u5E02\u540D\u79F0 <small style="color:#94a3b8;font-weight:400">\u4E2D\u6587\u6216\u82F1\u6587\u5747\u53EF</small></label>',
     '            <div style="display:flex;gap:6px;align-items:center">',
-    '              <input class="form-control" type="text" id="weather-city-input" value="' + (config.weatherCity || "") + '" placeholder="\u5982\uFF1A\u5317\u4EAC / Shanghai / Hong Kong" style="flex:1">',
+    '              <input class="form-control" type="text" id="weather-city-input" value="' + (config.weatherCity || "") + '" placeholder="\u5982\uFF1A\u5317\u4EAC,\u4E0A\u6D77,\u9999\u6E2F / Beijing,Shanghai" style="flex:1">',
     "            </div>",
     '            <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;padding:0 2px">',
-    "              \u652F\u6301\u5168\u7403\u57CE\u5E02 \xB7 \u6570\u636E\u6765\u81EA wttr.in \xB7 \u65E0\u9700 API Key",
+    "              \u652F\u6301\u591A\u4E2A\u57CE\u5E02\uFF0C\u9017\u53F7\u5206\u9694 \xB7 \u5168\u7403\u57CE\u5E02\u5747\u53EF \xB7 \u6570\u636E\u6765\u81EA wttr.in \xB7 \u65E0\u9700 API Key",
     "            </div>",
     "          </div>",
     '          <div class="toggle-row" style="padding:4px 2px">',
