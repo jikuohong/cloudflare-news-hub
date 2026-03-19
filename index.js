@@ -1399,11 +1399,12 @@ async function handleTestWeather(env) {
     let anyOk = false;
 
     for (const city of cities) {
-      const data = await fetchWeather(city);
-      if (!data) {
-        summaryLines.push("\u{1F4CD}" + city + ": \u5929\u6C14\u6570\u636E\u83B7\u53D6\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u57CE\u5E02\u540D\u79F0");
-        continue;
-      }
+      const rawPreview = JSON.stringify(data).substring(0, 500);
+      return Response.json({ 
+        success: false, 
+        message: `城市 "${city}" 天气数据解析失败。原始响应预览：${rawPreview}` 
+      }, { status: 500 });
+      
       const msgs = buildWeatherMessage(city, data);
       if (!msgs) {
         summaryLines.push("\u{1F4CD}" + city + ": \u5929\u6C14\u6570\u636E\u89E3\u6790\u5931\u8D25");
