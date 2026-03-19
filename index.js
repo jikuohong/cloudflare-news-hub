@@ -1160,7 +1160,9 @@ function buildWeatherMessage(city, data) {
 __name(buildWeatherMessage, "buildWeatherMessage");
 // 解析多城市列表（逗号/中文逗号/空格分隔）
 function parseCities(cityStr) {
-  return String(cityStr || "").split(/[,，\s]+/).map((s) => s.trim()).filter(Boolean);
+  // 支持多种分隔符：逗号、顿号、句点、中文句号、分号、空格等
+  // 兼容用户在移动端误输入句点（.）代替逗号的情况
+  return String(cityStr || "").split(/[,，、。·.;；\s]+/).map((s) => s.trim()).filter(Boolean);
 }
 __name(parseCities, "parseCities");
 
@@ -1512,7 +1514,7 @@ async function handleTestWeather(env) {
     const config = await getConfig(env);
     const cities = parseCities(config.weatherCity);
     if (cities.length === 0)
-      return Response.json({ success: false, message: "\u8BF7\u5148\u5728\u63A8\u9001\u8BBE\u7F6E\u4E2D\u586B\u5199\u57CE\u5E02\u540D\u79F0\u5E76\u4FDD\u5B58\uFF08\u652F\u6301\u591A\u4E2A\u57CE\u5E02\uFF0C\u9017\u53F7\u5206\u9694\uFF09" });
+      return Response.json({ success: false, message: "\u8BF7\u5148\u5728\u63A8\u9001\u8BBE\u7F6E\u4E2D\u586B\u5199\u57CE\u5E02\u540D\u79F0\u5E76\u4FDD\u5B58\uFF08\u652F\u6301\u591A\u4E2A\u57CE\u5E02\uFF0C\u9017\u53F7\u3001\u7A7A\u683C\u5747\u53EF\u5206\u9694\uFF09" });
 
     // 清除所有城市的上次运行记录，确保测试能正常触发
     const today = new Date().toISOString().slice(0, 10);
@@ -2477,7 +2479,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
     '          <div class="form-group" style="margin-bottom:6px">',
     '            <label class="form-label">\u57CE\u5E02\u540D\u79F0 <small style="color:#94a3b8;font-weight:400">\u4E2D\u6587\u6216\u82F1\u6587\u5747\u53EF</small></label>',
     '            <div style="display:flex;gap:6px;align-items:center">',
-    '              <input class="form-control" type="text" id="weather-city-input" value="' + (config.weatherCity || "") + '" placeholder="\u5982\uFF1A\u5317\u4EAC,\u4E0A\u6D77,\u9999\u6E2F / Beijing,Shanghai" style="flex:1">',
+    '              <input class="form-control" type="text" id="weather-city-input" value="' + (config.weatherCity || "") + '" placeholder="\u5982\uFF1A\u5317\u4EAC\uFF0C\u4E0A\u6D77 / Beijing Shanghai" style="flex:1">',
     "            </div>",
     '            <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;padding:0 2px">',
     "              \u652F\u6301\u591A\u4E2A\u57CE\u5E02\uFF0C\u9017\u53F7\u5206\u9694 \xB7 \u5168\u7403\u57CE\u5E02\u5747\u53EF \xB7 \u6570\u636E\u6765\u81EA Open-Meteo \xB7 \u65E0\u9700 API Key",
