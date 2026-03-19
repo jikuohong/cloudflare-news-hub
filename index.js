@@ -889,21 +889,60 @@ function getUVLabel(uv) {
 }
 __name(getUVLabel, "getUVLabel");
 var HOUR_LABELS = { "0": "00:00", "300": "03:00", "600": "06:00", "900": "09:00", "1200": "12:00", "1500": "15:00", "1800": "18:00", "2100": "21:00" };
-async function fetchWeather(city) {
+async function fetchWeather(city, env) {
   if (!city)
     return null;
-  try {
-    const url = "https://wttr.in/" + encodeURIComponent(city) + "?format=j1";
-    const resp = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; WeatherBot/1.0)", "Accept-Language": "zh-CN,zh;q=0.9" },
-      signal: AbortSignal.timeout(1e4)
-    });
-    if (!resp.ok)
-      return null;
-    return await resp.json();
-  } catch {
-    return null;
+
+  // ── KV 缓存（3小时）──────────────────────────────────────────
+  // 根本原因：多次定时任务持续请求 wttr.in，会触发其对 Cloudflare Worker
+  // 出站 IP 的频率限制，导致"运行一段时间后突然失败"。
+  // 缓存 3 小时：天气数据实时性可接受，同时把 wttr.in 请求降到每城市每天 ~8 次。
+  const CACHE_TTL = 10800; // 3 小时（秒）
+  const cacheKey = "weather_data_" + city.replace(/[^a-zA-Z0-9一-龥]/g, "_");
+  if (env && env.NEWS_CONFIG) {
+    try {
+      const cached = await env.NEWS_CONFIG.get(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        // 验证缓存数据有效
+        if (parsed?.current_condition?.[0]?.temp_C !== undefined) {
+          return parsed;
+        }
+      }
+    } catch { /* 缓存读取失败，继续实时请求 */ }
   }
+
+  // ── 实时请求（带 fallback 城市名）────────────────────────────
+  // wttr.in 对纯拼音城市名解析不稳定，加 ",China" 可显著改善
+  const cityVariants = [city];
+  if (!city.includes(",") && !city.includes("+")) {
+    cityVariants.push(city + ",China");
+  }
+
+  for (const cityName of cityVariants) {
+    try {
+      const url = "https://wttr.in/" + encodeURIComponent(cityName) + "?format=j1";
+      const resp = await fetch(url, {
+        // curl UA：wttr.in 对 curl 请求返回纯 JSON，比浏览器 UA 稳定
+        headers: { "User-Agent": "curl/7.68.0", "Accept": "application/json" },
+        signal: AbortSignal.timeout(15000) // 适当放宽超时
+      });
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      if (data?.current_condition?.[0]?.temp_C !== undefined) {
+        // 写入 KV 缓存
+        if (env && env.NEWS_CONFIG) {
+          try {
+            await env.NEWS_CONFIG.put(cacheKey, JSON.stringify(data), { expirationTtl: CACHE_TTL });
+          } catch { /* 缓存写入失败不影响推送 */ }
+        }
+        return data;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
 }
 __name(fetchWeather, "fetchWeather");
 function buildWeatherMessage(city, data) {
@@ -1052,7 +1091,7 @@ async function runWeatherPushOne(env, config, city, { isRetry = false } = {}) {
     if (failedChannels.length === 0)
       return { skipped: true, reason: "\u65E0\u5F85\u91CD\u8BD5\u7684\u5929\u6C14\u6E20\u9053" };
   }
-  const data = await fetchWeather(city);
+  const data = await fetchWeather(city, env);
   if (!data)
     return { ok: false, error: "\u5929\u6C14\u6570\u636E\u83B7\u53D6\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u57CE\u5E02\u540D\u79F0" };
   const msgs = buildWeatherMessage(city, data);
@@ -1399,14 +1438,14 @@ async function handleTestWeather(env) {
     let anyOk = false;
 
     for (const city of cities) {
-      const data = await fetchWeather(city);
+      const data = await fetchWeather(city, env);
       if (!data) {
-        summaryLines.push("\u{1F4CD}" + city + ": \u5929\u6C14\u6570\u636E\u83B7\u53D6\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u57CE\u5E02\u540D\u79F0");
+        summaryLines.push("\u{1F4CD}" + city + ": \u5929\u6c14\u6570\u636e\u83b7\u53d6\u5931\u8d25\uff0c\u8bf7\u5c1d\u8bd5\u4e2d\u6587\u540d\uff08\u6e29\u5dde\u3001\u676d\u5dde\uff09\u6216\u52a0\u5730\u533a\u540e\u7f00\uff08wenzhou,China\uff09");
         continue;
       }
       const msgs = buildWeatherMessage(city, data);
       if (!msgs) {
-        summaryLines.push("\u{1F4CD}" + city + ": \u5929\u6C14\u6570\u636E\u89E3\u6790\u5931\u8D25");
+        summaryLines.push("\u{1F4CD}" + city + ": \u5929\u6c14\u6570\u636e\u89e3\u6790\u5931\u8d25\uff0c\u8bf7\u5c1d\u8bd5\u4e2d\u6587\u540d\uff08\u6e29\u5dde\u3001\u676d\u5dde\uff09\u6216\u52a0\u5730\u533a\u540e\u7f00\uff08wenzhou,China\uff09");
         continue;
       }
       previews.push(msgs.plain);
