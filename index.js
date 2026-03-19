@@ -964,11 +964,13 @@ async function fetchWeather(city, env) {
 
 // ── Open-Meteo 实现 ───────────────────────────────────────────
 async function fetchWeatherOpenMeteo(city, wmoZh, degToDir) {
-  // 地理编码：依次尝试多种写法，提升命中率
-  // Open-Meteo 对部分中文城市名识别不稳定，加 ",China" 或英文名可兜底
+  // 地理编码：依次尝试两个来源，直到拿到经纬度
+  //   1. Open-Meteo geocoding（原始名 + ",China" 变体）
+  //   2. Nominatim / OpenStreetMap（对中文城市名支持最全）
   let lat, lon;
+
+  // ── 来源1：Open-Meteo geocoding ──
   const geoQueries = [city];
-  // 如果是纯中文，追加 ",China" 作为备选（有助于消歧）
   if (/[一-龥]/.test(city) && !city.includes(",")) {
     geoQueries.push(city + ",China");
   }
@@ -976,7 +978,7 @@ async function fetchWeatherOpenMeteo(city, wmoZh, degToDir) {
     try {
       const geoUrl = "https://geocoding-api.open-meteo.com/v1/search?name="
         + encodeURIComponent(q) + "&count=1&language=zh&format=json";
-      const geoResp = await fetch(geoUrl, { signal: AbortSignal.timeout(10000) });
+      const geoResp = await fetch(geoUrl, { signal: AbortSignal.timeout(8000) });
       if (!geoResp.ok) continue;
       const geoData = await geoResp.json();
       if (geoData.results?.[0]) {
@@ -986,6 +988,26 @@ async function fetchWeatherOpenMeteo(city, wmoZh, degToDir) {
       }
     } catch { continue; }
   }
+
+  // ── 来源2：Nominatim (OpenStreetMap)，中文城市收录最全 ──
+  if (lat === undefined) {
+    try {
+      const nomUrl = "https://nominatim.openstreetmap.org/search?q="
+        + encodeURIComponent(city) + "&format=json&limit=1&accept-language=zh";
+      const nomResp = await fetch(nomUrl, {
+        headers: { "User-Agent": "CloudflareNewsHub/1.0" },
+        signal: AbortSignal.timeout(8000)
+      });
+      if (nomResp.ok) {
+        const nomData = await nomResp.json();
+        if (nomData?.[0]?.lat) {
+          lat = parseFloat(nomData[0].lat);
+          lon = parseFloat(nomData[0].lon);
+        }
+      }
+    } catch {}
+  }
+
   if (lat === undefined || lon === undefined) return null;
 
   // 获取天气预报
