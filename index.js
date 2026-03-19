@@ -890,57 +890,148 @@ function getUVLabel(uv) {
 __name(getUVLabel, "getUVLabel");
 var HOUR_LABELS = { "0": "00:00", "300": "03:00", "600": "06:00", "900": "09:00", "1200": "12:00", "1500": "15:00", "1800": "18:00", "2100": "21:00" };
 async function fetchWeather(city, env) {
-  if (!city)
-    return null;
+  if (!city) return null;
 
-  // ── KV 缓存（3小时）──────────────────────────────────────────
-  // 根本原因：多次定时任务持续请求 wttr.in，会触发其对 Cloudflare Worker
-  // 出站 IP 的频率限制，导致"运行一段时间后突然失败"。
-  // 缓存 3 小时：天气数据实时性可接受，同时把 wttr.in 请求降到每城市每天 ~8 次。
-  const CACHE_TTL = 10800; // 3 小时（秒）
-  const cacheKey = "weather_data_" + city.replace(/[^a-zA-Z0-9一-龥]/g, "_");
-  if (env && env.NEWS_CONFIG) {
+  // ── KV 缓存（3小时）─────────────────────────────────────────────
+  const CACHE_TTL = 10800;
+  const cacheKey = "weather_om_" + city.replace(/[^\w\u4e00-\u9fa5]/g, "_");
+  if (env?.NEWS_CONFIG) {
     try {
       const cached = await env.NEWS_CONFIG.get(cacheKey);
       if (cached) {
         const parsed = JSON.parse(cached);
-        // 验证缓存数据有效
-        if (parsed?.current_condition?.[0]?.temp_C !== undefined) {
-          return parsed;
-        }
+        if (parsed?.current_condition?.[0]?.temp_C !== undefined) return parsed;
       }
-    } catch { /* 缓存读取失败，继续实时请求 */ }
+    } catch {}
   }
 
-  // ── 实时请求（带 fallback 城市名）────────────────────────────
-  // wttr.in 对纯拼音城市名解析不稳定，加 ",China" 可显著改善
+  // ── WMO 天气码 → 中文描述（Open-Meteo 使用） ─────────────────
+  const WMO_ZH = {
+    0:"晴",1:"晴间多云",2:"多云",3:"阴",
+    45:"雾",48:"雾凇",
+    51:"轻微毛毛雨",53:"毛毛雨",55:"浓毛毛雨",
+    61:"小雨",63:"中雨",65:"大雨",
+    71:"小雪",73:"中雪",75:"大雪",77:"雪粒",
+    80:"阵雨",81:"中阵雨",82:"强阵雨",
+    85:"阵雪",86:"强阵雪",
+    95:"雷雨",96:"雹雷雨",99:"强雹雷雨"
+  };
+  const wmoZh = (code) => WMO_ZH[code] ?? WMO_ZH[Math.floor((code??0)/10)*10] ?? "未知";
+  const degToDir = (deg) => {
+    const dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+    return dirs[Math.round(((deg ?? 0) % 360) / 22.5) % 16];
+  };
+
+  // ══════════════════════════════════════════════════════════════
+  // 主数据源：Open-Meteo（免费、无 IP 限制、无需 API Key）
+  // ══════════════════════════════════════════════════════════════
+  const result = await fetchWeatherOpenMeteo(city, wmoZh, degToDir);
+
+  if (result) {
+    // 写缓存
+    if (env?.NEWS_CONFIG) {
+      try {
+        await env.NEWS_CONFIG.put(cacheKey, JSON.stringify(result), { expirationTtl: CACHE_TTL });
+      } catch {}
+    }
+    return result;
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // 备用数据源：wttr.in（Open-Meteo 失败时兜底）
+  // 注意：wttr.in 可能对 Cloudflare Worker IP 限速，属于最后手段
+  // ══════════════════════════════════════════════════════════════
+  console.warn("[weather] Open-Meteo 失败，尝试 wttr.in 兜底，城市：" + city);
+  const fallback = await fetchWeatherWttr(city);
+  if (fallback && env?.NEWS_CONFIG) {
+    try {
+      // wttr.in 数据缓存时间缩短为 1 小时，避免长期依赖
+      await env.NEWS_CONFIG.put(cacheKey, JSON.stringify(fallback), { expirationTtl: 3600 });
+    } catch {}
+  }
+  return fallback;
+}
+
+// ── Open-Meteo 实现 ───────────────────────────────────────────
+async function fetchWeatherOpenMeteo(city, wmoZh, degToDir) {
+  try {
+    // 第一步：地理编码
+    const geoUrl = "https://geocoding-api.open-meteo.com/v1/search?name="
+      + encodeURIComponent(city) + "&count=1&language=zh&format=json";
+    const geoResp = await fetch(geoUrl, { signal: AbortSignal.timeout(10000) });
+    if (!geoResp.ok) return null;
+    const geoData = await geoResp.json();
+    if (!geoData.results?.[0]) return null;
+    const lat = geoData.results[0].latitude;
+    const lon = geoData.results[0].longitude;
+
+    // 第二步：获取天气
+    const wxUrl = "https://api.open-meteo.com/v1/forecast?" + [
+      "latitude=" + lat, "longitude=" + lon,
+      "current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,uv_index,visibility",
+      "hourly=temperature_2m,precipitation_probability,weather_code",
+      "daily=weather_code,temperature_2m_max,temperature_2m_min",
+      "timezone=auto", "forecast_days=3", "wind_speed_unit=kmh"
+    ].join("&");
+    const wxResp = await fetch(wxUrl, { signal: AbortSignal.timeout(10000) });
+    if (!wxResp.ok) return null;
+    const om = await wxResp.json();
+    if (!om?.current?.temperature_2m) return null;
+
+    // 第三步：转换格式
+    const buildHourly = (dayOffset) =>
+      [0,3,6,9,12,15,18,21].map(h => {
+        const idx = dayOffset * 24 + h;
+        const desc = wmoZh(om.hourly.weather_code[idx]);
+        return {
+          time: String(h * 100),
+          tempC: String(Math.round(om.hourly.temperature_2m[idx] ?? 0)),
+          chanceofrain: String(om.hourly.precipitation_probability?.[idx] ?? 0),
+          weatherDesc: [{ value: desc }],
+          lang_zh: [{ value: desc }]
+        };
+      });
+    const buildDay = (i) => ({
+      maxtempC: String(Math.round(om.daily.temperature_2m_max[i] ?? 0)),
+      mintempC: String(Math.round(om.daily.temperature_2m_min[i] ?? 0)),
+      hourly: buildHourly(i)
+    });
+    const cur = om.current;
+    const descZh = wmoZh(cur.weather_code);
+    return {
+      current_condition: [{
+        temp_C:         String(Math.round(cur.temperature_2m ?? 0)),
+        FeelsLikeC:     String(Math.round(cur.apparent_temperature ?? 0)),
+        humidity:       String(cur.relative_humidity_2m ?? 0),
+        windspeedKmph:  String(Math.round(cur.wind_speed_10m ?? 0)),
+        winddir16Point: degToDir(cur.wind_direction_10m),
+        uvIndex:        String(Math.round(cur.uv_index ?? 0)),
+        visibility:     String(Math.round((cur.visibility ?? 10000) / 1000)),
+        weatherDesc:    [{ value: descZh }],
+        lang_zh:        [{ value: descZh }]
+      }],
+      weather: [buildDay(0), buildDay(1), buildDay(2)]
+    };
+  } catch { return null; }
+}
+
+// ── wttr.in 实现（备用）──────────────────────────────────────
+async function fetchWeatherWttr(city) {
   const cityVariants = [city];
   if (!city.includes(",") && !city.includes("+")) {
     cityVariants.push(city + ",China");
   }
-
   for (const cityName of cityVariants) {
     try {
       const url = "https://wttr.in/" + encodeURIComponent(cityName) + "?format=j1";
       const resp = await fetch(url, {
-        // curl UA：wttr.in 对 curl 请求返回纯 JSON，比浏览器 UA 稳定
         headers: { "User-Agent": "curl/7.68.0", "Accept": "application/json" },
-        signal: AbortSignal.timeout(15000) // 适当放宽超时
+        signal: AbortSignal.timeout(15000)
       });
       if (!resp.ok) continue;
       const data = await resp.json();
-      if (data?.current_condition?.[0]?.temp_C !== undefined) {
-        // 写入 KV 缓存
-        if (env && env.NEWS_CONFIG) {
-          try {
-            await env.NEWS_CONFIG.put(cacheKey, JSON.stringify(data), { expirationTtl: CACHE_TTL });
-          } catch { /* 缓存写入失败不影响推送 */ }
-        }
-        return data;
-      }
-    } catch {
-      continue;
-    }
+      if (data?.current_condition?.[0]?.temp_C !== undefined) return data;
+    } catch { continue; }
   }
   return null;
 }
@@ -2389,7 +2480,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft
     '              <input class="form-control" type="text" id="weather-city-input" value="' + (config.weatherCity || "") + '" placeholder="\u5982\uFF1A\u5317\u4EAC,\u4E0A\u6D77,\u9999\u6E2F / Beijing,Shanghai" style="flex:1">',
     "            </div>",
     '            <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;padding:0 2px">',
-    "              \u652F\u6301\u591A\u4E2A\u57CE\u5E02\uFF0C\u9017\u53F7\u5206\u9694 \xB7 \u5168\u7403\u57CE\u5E02\u5747\u53EF \xB7 \u6570\u636E\u6765\u81EA wttr.in \xB7 \u65E0\u9700 API Key",
+    "              \u652F\u6301\u591A\u4E2A\u57CE\u5E02\uFF0C\u9017\u53F7\u5206\u9694 \xB7 \u5168\u7403\u57CE\u5E02\u5747\u53EF \xB7 \u6570\u636E\u6765\u81EA Open-Meteo \xB7 \u65E0\u9700 API Key",
     "            </div>",
     "          </div>",
     '          <div class="toggle-row" style="padding:4px 2px">',
