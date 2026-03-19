@@ -928,7 +928,6 @@ async function fetchWeather(city, env) {
   const result = await fetchWeatherOpenMeteo(city, wmoZh, degToDir);
 
   if (result) {
-    // 写缓存
     if (env?.NEWS_CONFIG) {
       try {
         await env.NEWS_CONFIG.put(cacheKey, JSON.stringify(result), { expirationTtl: CACHE_TTL });
@@ -939,33 +938,59 @@ async function fetchWeather(city, env) {
 
   // ══════════════════════════════════════════════════════════════
   // 备用数据源：wttr.in（Open-Meteo 失败时兜底）
-  // 注意：wttr.in 可能对 Cloudflare Worker IP 限速，属于最后手段
   // ══════════════════════════════════════════════════════════════
-  console.warn("[weather] Open-Meteo 失败，尝试 wttr.in 兜底，城市：" + city);
   const fallback = await fetchWeatherWttr(city);
-  if (fallback && env?.NEWS_CONFIG) {
+  if (fallback) {
+    if (env?.NEWS_CONFIG) {
+      try {
+        await env.NEWS_CONFIG.put(cacheKey, JSON.stringify(fallback), { expirationTtl: 3600 });
+      } catch {}
+    }
+    return fallback;
+  }
+
+  // 两个数据源都失败，在 KV 里记录失败原因供诊断
+  if (env?.NEWS_CONFIG) {
     try {
-      // wttr.in 数据缓存时间缩短为 1 小时，避免长期依赖
-      await env.NEWS_CONFIG.put(cacheKey, JSON.stringify(fallback), { expirationTtl: 3600 });
+      const diagKey = "weather_diag_" + city.replace(/[^\w一-龥]/g, "_");
+      await env.NEWS_CONFIG.put(diagKey,
+        JSON.stringify({ city, failedAt: new Date().toISOString(), reason: "open-meteo+wttr both failed" }),
+        { expirationTtl: 3600 }
+      );
     } catch {}
   }
-  return fallback;
+  return null;
 }
 
 // ── Open-Meteo 实现 ───────────────────────────────────────────
 async function fetchWeatherOpenMeteo(city, wmoZh, degToDir) {
-  try {
-    // 第一步：地理编码
-    const geoUrl = "https://geocoding-api.open-meteo.com/v1/search?name="
-      + encodeURIComponent(city) + "&count=1&language=zh&format=json";
-    const geoResp = await fetch(geoUrl, { signal: AbortSignal.timeout(10000) });
-    if (!geoResp.ok) return null;
-    const geoData = await geoResp.json();
-    if (!geoData.results?.[0]) return null;
-    const lat = geoData.results[0].latitude;
-    const lon = geoData.results[0].longitude;
+  // 地理编码：依次尝试多种写法，提升命中率
+  // Open-Meteo 对部分中文城市名识别不稳定，加 ",China" 或英文名可兜底
+  let lat, lon;
+  const geoQueries = [city];
+  // 如果是纯中文，追加 ",China" 作为备选（有助于消歧）
+  if (/[一-龥]/.test(city) && !city.includes(",")) {
+    geoQueries.push(city + ",China");
+  }
+  for (const q of geoQueries) {
+    try {
+      const geoUrl = "https://geocoding-api.open-meteo.com/v1/search?name="
+        + encodeURIComponent(q) + "&count=1&language=zh&format=json";
+      const geoResp = await fetch(geoUrl, { signal: AbortSignal.timeout(10000) });
+      if (!geoResp.ok) continue;
+      const geoData = await geoResp.json();
+      if (geoData.results?.[0]) {
+        lat = geoData.results[0].latitude;
+        lon = geoData.results[0].longitude;
+        break;
+      }
+    } catch { continue; }
+  }
+  if (lat === undefined || lon === undefined) return null;
 
-    // 第二步：获取天气
+  // 获取天气预报
+  let om;
+  try {
     const wxUrl = "https://api.open-meteo.com/v1/forecast?" + [
       "latitude=" + lat, "longitude=" + lon,
       "current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,uv_index,visibility",
@@ -975,44 +1000,46 @@ async function fetchWeatherOpenMeteo(city, wmoZh, degToDir) {
     ].join("&");
     const wxResp = await fetch(wxUrl, { signal: AbortSignal.timeout(10000) });
     if (!wxResp.ok) return null;
-    const om = await wxResp.json();
-    if (!om?.current?.temperature_2m) return null;
-
-    // 第三步：转换格式
-    const buildHourly = (dayOffset) =>
-      [0,3,6,9,12,15,18,21].map(h => {
-        const idx = dayOffset * 24 + h;
-        const desc = wmoZh(om.hourly.weather_code[idx]);
-        return {
-          time: String(h * 100),
-          tempC: String(Math.round(om.hourly.temperature_2m[idx] ?? 0)),
-          chanceofrain: String(om.hourly.precipitation_probability?.[idx] ?? 0),
-          weatherDesc: [{ value: desc }],
-          lang_zh: [{ value: desc }]
-        };
-      });
-    const buildDay = (i) => ({
-      maxtempC: String(Math.round(om.daily.temperature_2m_max[i] ?? 0)),
-      mintempC: String(Math.round(om.daily.temperature_2m_min[i] ?? 0)),
-      hourly: buildHourly(i)
-    });
-    const cur = om.current;
-    const descZh = wmoZh(cur.weather_code);
-    return {
-      current_condition: [{
-        temp_C:         String(Math.round(cur.temperature_2m ?? 0)),
-        FeelsLikeC:     String(Math.round(cur.apparent_temperature ?? 0)),
-        humidity:       String(cur.relative_humidity_2m ?? 0),
-        windspeedKmph:  String(Math.round(cur.wind_speed_10m ?? 0)),
-        winddir16Point: degToDir(cur.wind_direction_10m),
-        uvIndex:        String(Math.round(cur.uv_index ?? 0)),
-        visibility:     String(Math.round((cur.visibility ?? 10000) / 1000)),
-        weatherDesc:    [{ value: descZh }],
-        lang_zh:        [{ value: descZh }]
-      }],
-      weather: [buildDay(0), buildDay(1), buildDay(2)]
-    };
+    om = await wxResp.json();
   } catch { return null; }
+
+  // 修复：用 !== undefined 而非 !，防止气温为 0°C 时误判为失败
+  if (om?.current?.temperature_2m === undefined) return null;
+
+  // 转换格式
+  const buildHourly = (dayOffset) =>
+    [0,3,6,9,12,15,18,21].map(h => {
+      const idx = dayOffset * 24 + h;
+      const desc = wmoZh(om.hourly.weather_code[idx]);
+      return {
+        time: String(h * 100),
+        tempC: String(Math.round(om.hourly.temperature_2m[idx] ?? 0)),
+        chanceofrain: String(om.hourly.precipitation_probability?.[idx] ?? 0),
+        weatherDesc: [{ value: desc }],
+        lang_zh: [{ value: desc }]
+      };
+    });
+  const buildDay = (i) => ({
+    maxtempC: String(Math.round(om.daily.temperature_2m_max[i] ?? 0)),
+    mintempC: String(Math.round(om.daily.temperature_2m_min[i] ?? 0)),
+    hourly: buildHourly(i)
+  });
+  const cur = om.current;
+  const descZh = wmoZh(cur.weather_code);
+  return {
+    current_condition: [{
+      temp_C:         String(Math.round(cur.temperature_2m ?? 0)),
+      FeelsLikeC:     String(Math.round(cur.apparent_temperature ?? 0)),
+      humidity:       String(cur.relative_humidity_2m ?? 0),
+      windspeedKmph:  String(Math.round(cur.wind_speed_10m ?? 0)),
+      winddir16Point: degToDir(cur.wind_direction_10m),
+      uvIndex:        String(Math.round(cur.uv_index ?? 0)),
+      visibility:     String(Math.round((cur.visibility ?? 10000) / 1000)),
+      weatherDesc:    [{ value: descZh }],
+      lang_zh:        [{ value: descZh }]
+    }],
+    weather: [buildDay(0), buildDay(1), buildDay(2)]
+  };
 }
 
 // ── wttr.in 实现（备用）──────────────────────────────────────
@@ -1531,14 +1558,30 @@ async function handleTestWeather(env) {
     let anyOk = false;
 
     for (const city of cities) {
+      // 分步诊断：先单独测地理编码，再测天气获取，方便定位失败环节
+      let geoOk = false;
+      try {
+        const geoTest = await fetch(
+          "https://geocoding-api.open-meteo.com/v1/search?name=" + encodeURIComponent(city) + "&count=1&language=zh&format=json",
+          { signal: AbortSignal.timeout(8000) }
+        );
+        if (geoTest.ok) {
+          const geoJson = await geoTest.json();
+          geoOk = !!(geoJson.results?.[0]);
+        }
+      } catch {}
+
       const data = await fetchWeather(city, env);
       if (!data) {
-        summaryLines.push("\u{1F4CD}" + city + ": \u5929\u6c14\u6570\u636e\u83b7\u53d6\u5931\u8d25\uff0c\u8bf7\u5c1d\u8bd5\u4e2d\u6587\u540d\uff08\u6e29\u5dde\u3001\u676d\u5dde\uff09\u6216\u52a0\u5730\u533a\u540e\u7f00\uff08wenzhou,China\uff09");
+        const hint = geoOk
+          ? "\u5730\u7406\u7f16\u7801\u6210\u529f\u4f46\u5929\u6c14API\u5931\u8d25\uff0c\u53ef\u80fd\u662fopen-meteo\u66b4\u9732\u8fc7\u591a\u8bf7\u8bd5\u7a0d\u540e\u91cd\u8bd5"
+          : "\u5730\u7406\u7f16\u7801\u5931\u8d25\uff0c\u8bf7\u5c1d\u8bd5\u82f1\u6587\u540d\uff08\u5982Wenzhou\u3001Hangzhou\uff09\u6216\u52a0\u5730\u533a\uff08\u6e29\u5dde,China\uff09";
+        summaryLines.push("\u{1F4CD}" + city + ": \u83b7\u53d6\u5931\u8d25 \u2014 " + hint);
         continue;
       }
       const msgs = buildWeatherMessage(city, data);
       if (!msgs) {
-        summaryLines.push("\u{1F4CD}" + city + ": \u5929\u6c14\u6570\u636e\u89e3\u6790\u5931\u8d25\uff0c\u8bf7\u5c1d\u8bd5\u4e2d\u6587\u540d\uff08\u6e29\u5dde\u3001\u676d\u5dde\uff09\u6216\u52a0\u5730\u533a\u540e\u7f00\uff08wenzhou,China\uff09");
+        summaryLines.push("\u{1F4CD}" + city + ": \u6570\u636e\u89e3\u6790\u5931\u8d25");
         continue;
       }
       previews.push(msgs.plain);
