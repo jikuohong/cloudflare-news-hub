@@ -894,7 +894,7 @@ async function fetchWeather(city, env) {
 
   // ── KV 缓存（3小时）─────────────────────────────────────────────
   const CACHE_TTL = 10800;
-  const cacheKey = "weather_om_" + city.replace(/[^\w\u4e00-\u9fa5]/g, "_");
+  const cacheKey = "weather_cache_" + city.replace(/[^\w\u4e00-\u9fa5]/g, "_");
   if (env?.NEWS_CONFIG) {
     try {
       const cached = await env.NEWS_CONFIG.get(cacheKey);
@@ -922,37 +922,39 @@ async function fetchWeather(city, env) {
     return dirs[Math.round(((deg ?? 0) % 360) / 22.5) % 16];
   };
 
-// ══════════════════════════════════════════════════════════════
-// 主数据源：wttr.in
-// ══════════════════════════════════════════════════════════════
-const result = await fetchWeatherWttr(city);
-if (result) {
-  if (env?.NEWS_CONFIG) {
-    try {
-      await env.NEWS_CONFIG.put(cacheKey, JSON.stringify(result), { expirationTtl: 3600 });
-    } catch {}
+  // ══════════════════════════════════════════════════════════════
+  // 主数据源：wttr.in
+  // ══════════════════════════════════════════════════════════════
+  const result = await fetchWeatherWttr(city);
+  if (result) {
+    result._source = "wttr.in";
+    if (env?.NEWS_CONFIG) {
+      try {
+        await env.NEWS_CONFIG.put(cacheKey, JSON.stringify(result), { expirationTtl: 3600 });
+      } catch {}
+    }
+    return result;
   }
-  return result;
-}
-// ══════════════════════════════════════════════════════════════
-// 备用数据源：Open-Meteo（wttr.in 失败时兜底）
-// ══════════════════════════════════════════════════════════════
-const fallback = await fetchWeatherOpenMeteo(city, wmoZh, degToDir);
-if (fallback) {
-  if (env?.NEWS_CONFIG) {
-    try {
-      await env.NEWS_CONFIG.put(cacheKey, JSON.stringify(fallback), { expirationTtl: CACHE_TTL });
-    } catch {}
+  // ══════════════════════════════════════════════════════════════
+  // 备用数据源：Open-Meteo（wttr.in 失败时兜底）
+  // ══════════════════════════════════════════════════════════════
+  const fallback = await fetchWeatherOpenMeteo(city, wmoZh, degToDir);
+  if (fallback) {
+    fallback._source = "Open-Meteo";
+    if (env?.NEWS_CONFIG) {
+      try {
+        await env.NEWS_CONFIG.put(cacheKey, JSON.stringify(fallback), { expirationTtl: CACHE_TTL });
+      } catch {}
+    }
+    return fallback;
   }
-  return fallback;
-}
 
   // 两个数据源都失败，在 KV 里记录失败原因供诊断
   if (env?.NEWS_CONFIG) {
     try {
-      const diagKey = "weather_diag_" + city.replace(/[^\w一-龥]/g, "_");
+      const diagKey = "weather_diag_" + city.replace(/[^\w\u4e00-\u9fa5]/g, "_");
       await env.NEWS_CONFIG.put(diagKey,
-        JSON.stringify({ city, failedAt: new Date().toISOString(), reason: "open-meteo+wttr both failed" }),
+        JSON.stringify({ city, failedAt: new Date().toISOString(), reason: "wttr.in+open-meteo both failed" }),
         { expirationTtl: 3600 }
       );
     } catch {}
@@ -1070,7 +1072,7 @@ async function fetchWeatherWttr(city) {
   }
   for (const cityName of cityVariants) {
     try {
-      const url = "https://wttr.in/" + encodeURIComponent(cityName) + "?format=j1";
+      const url = "https://wttr.in/" + encodeURIComponent(cityName) + "?format=j1&lang=zh";
       const resp = await fetch(url, {
         headers: { "User-Agent": "curl/7.68.0", "Accept": "application/json" },
         signal: AbortSignal.timeout(15000)
@@ -1089,6 +1091,7 @@ function buildWeatherMessage(city, data) {
   const cur = data.current_condition?.[0];
   if (!cur)
     return null;
+  const source = data._source || "wttr.in";
   const desc = cur.lang_zh?.[0]?.value || cur.weatherDesc?.[0]?.value || "\u672A\u77E5";
   const icon = getWeatherIcon(desc);
   const tempC = cur.temp_C;
@@ -1110,7 +1113,7 @@ function buildWeatherMessage(city, data) {
   plain += "\u5929\u6C14\uFF1A" + desc + "\n";
   plain += "\u6C14\u6E29\uFF1A" + tempC + "\xB0C\uFF08\u4F53\u611F " + feelsLike + "\xB0C\uFF09\n";
   plain += "\u4ECA\u65E5\uFF1A" + todayMin + "\xB0C ~ " + todayMax + "\xB0C\n";
-  plain += "\u6E7F\u5EA6\uFF1A" + humidity + "%  |  \u98CE\u901F\uFF1A" + windKmph + " km/h " + getWindLabel(windKmph) + "\n";
+  plain += "\u6E7F\u5EA6\uFF1A" + humidity + "%  |  \u98CE\u901F\uFF1A" + windKmph + " km/h " + getWindLabel(windKmph) + "  \u98CE\u5411\uFF1A" + windDir + "\n";
   plain += "\u80FD\u89C1\u5EA6\uFF1A" + visibility + " km  |  \u7D2B\u5916\u7EBF\uFF1A" + getUVLabel(uvIndex) + "\n";
   if (today?.hourly?.length) {
     plain += "\n\u2501\u2501\u2501 \u23F0 \u4ECA\u65E5\u65F6\u6BB5 \u2501\u2501\u2501\n";
@@ -1144,7 +1147,7 @@ function buildWeatherMessage(city, data) {
   md += "- \u5929\u6C14\uFF1A**" + desc + "**\n";
   md += "- \u6C14\u6E29\uFF1A**" + tempC + "\xB0C**\uFF08\u4F53\u611F " + feelsLike + "\xB0C\uFF09\n";
   md += "- \u4ECA\u65E5\uFF1A" + todayMin + "\xB0C ~ " + todayMax + "\xB0C\n";
-  md += "- \u6E7F\u5EA6\uFF1A" + humidity + "%  |  \u98CE\u901F\uFF1A" + windKmph + " km/h\uFF08" + getWindLabel(windKmph) + "\uFF09\n";
+  md += "- \u6E7F\u5EA6\uFF1A" + humidity + "%  |  \u98CE\u901F\uFF1A" + windKmph + " km/h\uFF08" + getWindLabel(windKmph) + "\uFF09  \u98CE\u5411\uFF1A" + windDir + "\n";
   md += "- \u80FD\u89C1\u5EA6\uFF1A" + visibility + " km  |  \u7D2B\u5916\u7EBF\uFF1A" + getUVLabel(uvIndex) + "\n\n";
   if (today?.hourly?.length) {
     md += "### \u23F0 \u4ECA\u65E5\u65F6\u6BB5\n";
@@ -1178,7 +1181,7 @@ function buildWeatherMessage(city, data) {
   tg += "\u5929\u6C14\uFF1A<b>" + escapeTg(desc) + "</b>\n";
   tg += "\u6C14\u6E29\uFF1A<b>" + tempC + "\xB0C</b>\uFF08\u4F53\u611F " + feelsLike + "\xB0C\uFF09\n";
   tg += "\u4ECA\u65E5\uFF1A" + todayMin + "\xB0C ~ " + todayMax + "\xB0C\n";
-  tg += "\u6E7F\u5EA6\uFF1A" + humidity + "%  |  \u98CE\u901F\uFF1A" + windKmph + " km/h " + getWindLabel(windKmph) + "\n";
+  tg += "\u6E7F\u5EA6\uFF1A" + humidity + "%  |  \u98CE\u901F\uFF1A" + windKmph + " km/h " + getWindLabel(windKmph) + "  \u98CE\u5411\uFF1A" + escapeTg(windDir) + "\n";
   tg += "\u80FD\u89C1\u5EA6\uFF1A" + visibility + " km  |  \u7D2B\u5916\u7EBF\uFF1A" + getUVLabel(uvIndex) + "\n";
   if (today?.hourly?.length) {
     tg += "\n\u2501\u2501\u2501 \u23F0 <b>\u4ECA\u65E5\u65F6\u6BB5</b> \u2501\u2501\u2501\n";
@@ -1202,6 +1205,9 @@ function buildWeatherMessage(city, data) {
     da.setDate(da.getDate() + 2);
     tg += getWeatherIcon(dDesc) + " \u540E\u5929\uFF08" + (da.getMonth() + 1) + "/" + da.getDate() + "\uFF09" + escapeTg(dDesc) + "  " + dayAfter.mintempC + "\xB0C ~ " + dayAfter.maxtempC + "\xB0C\n";
   }
+  plain += "\n\u6570\u636E\u6765\u6E90\uFF1A" + source + "\n";
+  md += "\n> \u6570\u636E\u6765\u6E90\uFF1A" + source + "\n";
+  tg += "\n<i>\u6570\u636E\u6765\u6E90\uFF1A" + escapeTg(source) + "</i>\n";
   return { plain, md, tg };
 }
 __name(buildWeatherMessage, "buildWeatherMessage");
