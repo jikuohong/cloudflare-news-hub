@@ -922,32 +922,30 @@ async function fetchWeather(city, env) {
     return dirs[Math.round(((deg ?? 0) % 360) / 22.5) % 16];
   };
 
-  // ══════════════════════════════════════════════════════════════
-  // 主数据源：Open-Meteo（免费、无 IP 限制、无需 API Key）
-  // ══════════════════════════════════════════════════════════════
-  const result = await fetchWeatherOpenMeteo(city, wmoZh, degToDir);
-
-  if (result) {
-    if (env?.NEWS_CONFIG) {
-      try {
-        await env.NEWS_CONFIG.put(cacheKey, JSON.stringify(result), { expirationTtl: CACHE_TTL });
-      } catch {}
-    }
-    return result;
+// ══════════════════════════════════════════════════════════════
+// 主数据源：wttr.in
+// ══════════════════════════════════════════════════════════════
+const result = await fetchWeatherWttr(city);
+if (result) {
+  if (env?.NEWS_CONFIG) {
+    try {
+      await env.NEWS_CONFIG.put(cacheKey, JSON.stringify(result), { expirationTtl: 3600 });
+    } catch {}
   }
-
-  // ══════════════════════════════════════════════════════════════
-  // 备用数据源：wttr.in（Open-Meteo 失败时兜底）
-  // ══════════════════════════════════════════════════════════════
-  const fallback = await fetchWeatherWttr(city);
-  if (fallback) {
-    if (env?.NEWS_CONFIG) {
-      try {
-        await env.NEWS_CONFIG.put(cacheKey, JSON.stringify(fallback), { expirationTtl: 3600 });
-      } catch {}
-    }
-    return fallback;
+  return result;
+}
+// ══════════════════════════════════════════════════════════════
+// 备用数据源：Open-Meteo（wttr.in 失败时兜底）
+// ══════════════════════════════════════════════════════════════
+const fallback = await fetchWeatherOpenMeteo(city, wmoZh, degToDir);
+if (fallback) {
+  if (env?.NEWS_CONFIG) {
+    try {
+      await env.NEWS_CONFIG.put(cacheKey, JSON.stringify(fallback), { expirationTtl: CACHE_TTL });
+    } catch {}
   }
+  return fallback;
+}
 
   // 两个数据源都失败，在 KV 里记录失败原因供诊断
   if (env?.NEWS_CONFIG) {
